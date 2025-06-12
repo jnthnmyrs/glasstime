@@ -10,7 +10,7 @@ interface LiquidGlassLensProps {
   size?: number;
   intensity?: number;
   className?: string;
-  cursor?: boolean;
+  showCursor?: boolean;
 }
 
 export default function LiquidGlassLens({ 
@@ -20,6 +20,7 @@ export default function LiquidGlassLens({
   size = 200, 
   intensity = 1,
   className = '',
+  showCursor = false,
 }: LiquidGlassLensProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<WebGLRenderingContext | null>(null);
@@ -115,7 +116,7 @@ export default function LiquidGlassLens({
           return;
         }
         
-        vec2 lensOffset = (v_texCoord - lensCenter) * u_lensSize;
+        vec2 lensOffset = (v_texCoord - lensCenter) * u_lensSize ;
         lensOffset.y = -lensOffset.y;
         vec2 basePageCoord = u_lensPosition + lensOffset;
         
@@ -124,9 +125,9 @@ export default function LiquidGlassLens({
         // ENHANCED: Create liquid glass melting effect with more aggressive distortion
         vec2 finalPageCoord = basePageCoord;
         
-        if (normalizedDist > 0.4) {
+        if (normalizedDist > 0.6) {
           // Start distortion earlier for more melting effect
-          float edgeZone = (normalizedDist - 0.4) / 0.4;
+          float edgeZone = (normalizedDist - 0.4) / 0.9;
           vec2 direction = normalize(v_texCoord - lensCenter);
           
           // Create liquid melting distortion - content bends toward lens edges
@@ -395,6 +396,7 @@ export default function LiquidGlassLens({
         height: `${size}px`,
         border: debugMode ? '1px solid rgba(0,255,0,0.3)' : 'none'
       }}
+
     />
   );
 }
