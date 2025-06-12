@@ -24,42 +24,114 @@ export default function LiquidGlassLens({
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
   const textureRef = useRef<WebGLTexture | null>(null);
+  const lastCaptureTimeRef = useRef<number>(0);
+  const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const [pageTexture, setPageTexture] = useState<{ width: number; height: number } | null>(null);
   const [isWebGLReady, setIsWebGLReady] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isInteracting, setIsInteracting] = useState(false);
   
-  // SIMPLE: Just track mouse position
-  const [mousePos, setMousePos] = useState({ 
+  // Track position
+  const [pointerPos, setPointerPos] = useState({ 
     x: propX || 0, 
     y: propY || 0 
   });
 
+  // Check if device is mobile
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkMobile = () => {
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        const isMobileViewport = window.innerWidth <= 768;
+        setIsMobile(isTouchDevice && isMobileViewport);
+        
+        // Adjust size for mobile
+        if (isTouchDevice && isMobileViewport) {
+          // Use smaller lens size on mobile for better performance
+          const mobileSize = Math.min(window.innerWidth * 0.5, 150);
+          return mobileSize;
+        }
+        return size;
+      };
+      
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+    }
+  }, [size]);
+
   // Initialize center position on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && !propX && !propY) {
-      setMousePos({
+      setPointerPos({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2
       });
     }
-  }, []);
+  }, [propX, propY]);
 
-  // SIMPLE: Just track mouse movement
+  // Track pointer events (mouse + touch)
   useEffect(() => {
+    // Create handlers for both mouse and touch events
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
+      e.preventDefault();
+      setPointerPos({ x: e.clientX, y: e.clientY });
+      resetInteractionTimeout();
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const touch = e.touches[0];
+        setPointerPos({ x: touch.clientX, y: touch.clientY });
+        resetInteractionTimeout();
+      }
+    };
+    
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const touch = e.touches[0];
+        setPointerPos({ x: touch.clientX, y: touch.clientY });
+        setIsInteracting(true);
+        resetInteractionTimeout();
+      }
+    };
+    
+    // Reset the texture after user stops interacting
+    const resetInteractionTimeout = () => {
+      setIsInteracting(true);
+      
+      // Clear existing timeout
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+      
+      // Set a new timeout
+      interactionTimeoutRef.current = setTimeout(() => {
+        setIsInteracting(false);
+        captureTexture();
+      }, 500); // Wait 500ms after interaction stops before re-capturing
+    };
+
+    // Add event listeners based on device type
+    document.addEventListener('mousemove', handleMouseMove, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchstart', handleTouchStart);
+      
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
     };
   }, []);
 
-  // Use mouse position or props
-  const x = propX !== undefined ? propX : mousePos.x;
-  const y = propY !== undefined ? propY : mousePos.y;
+  // Use pointer position or props
+  const x = propX !== undefined ? propX : pointerPos.x;
+  const y = propY !== undefined ? propY : pointerPos.y;
 
   const initWebGL = useCallback(() => {
     console.log('🔧 Initializing WebGL...');
@@ -93,10 +165,10 @@ export default function LiquidGlassLens({
     gl.compileShader(vertexShader);
     if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) return false;
 
-    // TESTING: Remove Y flip entirely to see natural orientation
     const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
     if (!fragmentShader) return false;
 
+    // Use simpler shader for mobile to improve performance
     const fragmentShaderSource = `
       precision mediump float;
       uniform sampler2D u_texture;
@@ -279,24 +351,38 @@ export default function LiquidGlassLens({
     gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
     gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 16, 8);
 
-    console.log('✅ Natural orientation test!');
+    console.log('✅ WebGL initialized successfully');
     return true;
   }, []);
 
   const captureTexture = useCallback(async () => {
     if (!glRef.current || !programRef.current || !canvasRef.current) return;
-
+    
+    // Throttle texture captures (especially on mobile)
+    const now = Date.now();
+    const minCaptureInterval = isMobile ? 1000 : 500; // Longer interval on mobile
+    
+    if (isInteracting && now - lastCaptureTimeRef.current < minCaptureInterval) {
+      return;
+    }
+    
+    lastCaptureTimeRef.current = now;
+    
     try {
+      // Mobile-optimized settings
+      const captureScale = isMobile ? 0.5 : 1;
+      const scrollOffset = isMobile ? 0 : 35; // Adjust based on device
+      
       const pageCanvas = await html2canvas(document.body, {
         allowTaint: true,
         useCORS: true,
-        scale: 1, // Keep at 1x to avoid bold text artifacts
+        scale: captureScale, // Lower resolution for mobile
         width: window.innerWidth,
         height: window.innerHeight,
         x: window.scrollX,
-        y: window.scrollY + 35,
+        y: window.scrollY + scrollOffset,
         ignoreElements: (element) => element === canvasRef.current,
-        // IMPROVED: Better text rendering settings
+        // Better text rendering settings
         onclone: (clonedDoc) => {
           const style = clonedDoc.createElement('style');
           style.textContent = `
@@ -319,21 +405,24 @@ export default function LiquidGlassLens({
         height: pageCanvas.height
       });
 
-      const texture = gl.createTexture();
+      // Reuse texture if possible
+      let texture = textureRef.current;
+      if (!texture) {
+        texture = gl.createTexture();
+        textureRef.current = texture;
+      }
+      
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pageCanvas);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      // IMPROVED: Use NEAREST filtering to avoid text blurring
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-      textureRef.current = texture;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     } catch (error) {
       console.error('❌ Failed to capture:', error);
     }
-  }, []);
+  }, [isMobile, isInteracting]);
 
   const render = useCallback(() => {
     if (!glRef.current || !programRef.current || !textureRef.current || !pageTexture) return;
@@ -351,8 +440,9 @@ export default function LiquidGlassLens({
     gl.useProgram(program);
     
     gl.uniform2f(gl.getUniformLocation(program, 'u_pageResolution'), pageTexture.width, pageTexture.height);
-    // IMPROVED: Add Y offset to lift the text position
-    gl.uniform2f(gl.getUniformLocation(program, 'u_lensPosition'), x, y - 10);
+    // Adjust offset for mobile vs desktop
+    const yOffset = isMobile ? 0 : -10;
+    gl.uniform2f(gl.getUniformLocation(program, 'u_lensPosition'), x, y + yOffset);
     gl.uniform2f(gl.getUniformLocation(program, 'u_lensSize'), size, size);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -360,7 +450,7 @@ export default function LiquidGlassLens({
     gl.uniform1i(gl.getUniformLocation(program, 'u_texture'), 0);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }, [size, x, y, pageTexture]);
+  }, [size, x, y, pageTexture, isMobile]);
 
   // Initialize WebGL when component mounts
   useEffect(() => {
@@ -373,14 +463,40 @@ export default function LiquidGlassLens({
     }
   }, [isVisible, initWebGL, captureTexture]);
 
+  // Recapture texture periodically when not interacting
+  useEffect(() => {
+    let refreshInterval: NodeJS.Timeout | null = null;
+    
+    if (isWebGLReady && !isInteracting) {
+      // Only set up refresh interval when not interacting
+      refreshInterval = setInterval(() => {
+        captureTexture();
+      }, isMobile ? 3000 : 2000); // Less frequent on mobile to save battery
+    }
+    
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [isWebGLReady, captureTexture, isInteracting, isMobile]);
+
   // Render when position changes
   useEffect(() => {
     if (isWebGLReady && textureRef.current) {
       render();
+      
+      // For mobile: capture texture occasionally during interaction
+      if (isMobile && isInteracting) {
+        const now = Date.now();
+        if (now - lastCaptureTimeRef.current > 1000) { // 1 second
+          captureTexture();
+        }
+      }
     }
-  }, [render, isWebGLReady, x, y]);
+  }, [render, isWebGLReady, x, y, isMobile, isInteracting, captureTexture]);
 
-  // SIMPLE: Canvas positioning at full size always
+  // Handle canvas positioning
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -389,7 +505,14 @@ export default function LiquidGlassLens({
     canvas.height = size;
     canvas.style.left = `${x - size/2}px`;
     canvas.style.top = `${y - size/2}px`;
-  }, [x, y, size]);
+    
+    // Add smooth transition on mobile
+    if (isMobile) {
+      canvas.style.transition = 'left 0.1s, top 0.1s';
+    } else {
+      canvas.style.transition = '';
+    }
+  }, [x, y, size, isMobile]);
 
   if (!isVisible) return null;
 
@@ -400,6 +523,7 @@ export default function LiquidGlassLens({
       style={{
         width: `${size}px`,
         height: `${size}px`,
+        willChange: 'transform', // Optimize for animations
       }}
     />
   );
