@@ -157,7 +157,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     // Position content - LEFT ALIGNED with proper padding
     const padding = isMobile ? 20 : 64;
     const leftX = padding;
-    const startY = Math.max(60, (textCanvas.height - 400) / 2); // Adjusted for mobile
+    const startY = Math.max(60, (textCanvas.height - 600) / 2); // Adjusted for mobile
     const maxWidth = Math.min(672, textCanvas.width - padding * 2);
 
     let currentY = startY;
@@ -261,7 +261,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       }
     `;
 
-    // Fragment shader with MOBILE OPTIMIZATIONS
+    // Fragment shader with FIXED MOBILE ASPECT RATIO
     const fragmentShaderSource = `
       precision ${isMobile ? 'mediump' : 'highp'} float;
       uniform sampler2D u_textTexture;
@@ -275,21 +275,27 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
         vec2 uv = v_texCoord;
         vec2 mouse = u_mousePosition / u_resolution;
         
-        // FIX ASPECT RATIO
+        // FIXED ASPECT RATIO CORRECTION
         float aspectRatio = u_resolution.x / u_resolution.y;
         vec2 aspectUV = uv;
         vec2 aspectMouse = mouse;
         
+        // Apply aspect ratio correction consistently
         if (aspectRatio > 1.0) {
+          // Landscape - stretch X coordinates
           aspectUV.x = (uv.x - 0.5) * aspectRatio + 0.5;
           aspectMouse.x = (mouse.x - 0.5) * aspectRatio + 0.5;
         } else {
+          // Portrait (most mobile) - stretch Y coordinates  
           aspectUV.y = (uv.y - 0.5) / aspectRatio + 0.5;
           aspectMouse.y = (mouse.y - 0.5) / aspectRatio + 0.5;
         }
         
+        // Calculate distance in aspect-corrected space
         float dist = distance(aspectUV, aspectMouse);
-        float lensRadius = u_isMobile ? 0.25 : 0.12; // Smaller lens on mobile
+        
+        // CONSISTENT lens radius regardless of aspect ratio
+        float lensRadius = u_isMobile ? 0.2 : 0.12; // Slightly larger on mobile for easier touch
         
         if (dist < lensRadius) {
           float normalizedDist = dist / lensRadius;
@@ -299,50 +305,76 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
           
           // CLEAR ZONE - minimal distortion
           if (normalizedDist <= 0.6) {
-            vec2 offset = (uv - mouse) * 0.03 * normalizedDist; // Reduced for mobile
-            sampleUV = uv - offset;
+            // Convert back to screen space for offset calculation
+            vec2 screenOffset = (aspectUV - aspectMouse) * 0.03 * normalizedDist;
+            
+            // Convert offset back to UV space
+            if (aspectRatio > 1.0) {
+              screenOffset.x /= aspectRatio;
+            } else {
+              screenOffset.y *= aspectRatio;
+            }
+            
+            sampleUV = uv - screenOffset;
           }
-          // MELTING ZONE - simplified for mobile performance
+          // MELTING ZONE
           else {
             float edgeZone = (normalizedDist - 0.6) / 0.4;
             
-            // INWARD PULL - simpler calculation for mobile
-            vec2 toCenter = mouse - uv;
+            // Calculate pull in aspect-corrected space
+            vec2 toCenter = aspectMouse - aspectUV;
             float pullStrength = u_isMobile ? 
-              pow(edgeZone, 1.5) * 0.7 :  // Gentler on mobile
-              pow(edgeZone, 1.5) * 0.7;   // Full effect on desktop
+              pow(edgeZone, 1.2) * 0.06 :  
+              pow(edgeZone, 1.5) * 0.08;   
             
-            vec2 inwardPull = toCenter * pullStrength;
+            vec2 aspectPull = toCenter * pullStrength;
             
-            // Simplified effects for mobile
+            // Add effects only on desktop
             if (!u_isMobile) {
               // CURVED FLOW - only on desktop
               float angle = atan(toCenter.y, toCenter.x);
               float curvature = sin(normalizedDist * 3.14159) * edgeZone * 0.3;
               float curvedAngle = angle + curvature;
-              vec2 curvedFlow = vec2(cos(curvedAngle), sin(curvedAngle)) * length(inwardPull);
+              vec2 curvedFlow = vec2(cos(curvedAngle), sin(curvedAngle)) * length(aspectPull);
               
               // SWIRLING MOTION - only on desktop
               float swirl = sin(angle * 4.0 + normalizedDist * 6.28 + u_time * 0.8) * edgeZone * 0.02;
               vec2 swirlOffset = vec2(-toCenter.y, toCenter.x) * swirl / length(toCenter);
               
-              inwardPull = curvedFlow + swirlOffset;
+              aspectPull = curvedFlow + swirlOffset;
             }
             
-            sampleUV = uv + inwardPull;
+            // Convert pull back to UV space
+            vec2 uvPull = aspectPull;
+            if (aspectRatio > 1.0) {
+              uvPull.x /= aspectRatio;
+            } else {
+              uvPull.y *= aspectRatio;
+            }
+            
+            sampleUV = uv + uvPull;
           }
           
-          // CHROMATIC ABERRATION - reduced on mobile
-          if (normalizedDist > 0.75) { // Start later on mobile
+          // CHROMATIC ABERRATION
+          if (normalizedDist > 0.75) {
             float chromaticStrength = (normalizedDist - 0.75) / 0.25;
             chromaticStrength = pow(chromaticStrength, 1.2);
             
-            vec2 flowDirection = normalize(mouse - uv);
-            float chromatic = u_isMobile ? 0.07 : 0.02; // Reduced on mobile
+            // Calculate direction in aspect-corrected space
+            vec2 flowDirection = normalize(aspectMouse - aspectUV);
+            float chromatic = u_isMobile ? 0.008 : 0.008; // Same on both now
             
-            vec2 redOffset = flowDirection * chromaticStrength * chromatic;
-            vec2 greenOffset = flowDirection * chromaticStrength * chromatic * 0.5;  
-            vec2 blueOffset = flowDirection * chromaticStrength * chromatic * 1.5;
+            // Convert chromatic offsets to UV space
+            vec2 chromaticOffset = flowDirection * chromaticStrength * chromatic;
+            if (aspectRatio > 1.0) {
+              chromaticOffset.x /= aspectRatio;
+            } else {
+              chromaticOffset.y *= aspectRatio;
+            }
+            
+            vec2 redOffset = chromaticOffset;
+            vec2 greenOffset = chromaticOffset * 0.5;  
+            vec2 blueOffset = chromaticOffset * 1.5;
             
             float red = texture2D(u_textTexture, sampleUV + redOffset).r;
             float green = texture2D(u_textTexture, sampleUV + greenOffset).g;
@@ -350,10 +382,10 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
             
             vec4 color = vec4(red, green, blue, 1.0);
             
-            // PRISMATIC EFFECT - only on desktop or very edge on mobile
-            if (normalizedDist > (u_isMobile ? 0.9 : 0.85)) {
-              float prismStart = u_isMobile ? 0.9 : 0.85;
-              float prismRange = u_isMobile ? 0.1 : 0.15;
+            // PRISMATIC EFFECT
+            if (normalizedDist > (u_isMobile ? 0.85 : 0.85)) {
+              float prismStart = 0.85;
+              float prismRange = 0.15;
               float prismIntensity = (normalizedDist - prismStart) / prismRange;
               prismIntensity = pow(prismIntensity, 2.0);
               float prismAngle = atan(flowDirection.y, flowDirection.x);
@@ -364,8 +396,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
                 sin(prismAngle * 3.0 + u_time * 0.6 + 4.18) * 0.5 + 0.5
               );
               
-              float spectrumIntensity = u_isMobile ? 0.2 : 0.4;
-              color.rgb = mix(color.rgb, spectrum, prismIntensity * spectrumIntensity);
+              color.rgb = mix(color.rgb, spectrum, prismIntensity * 0.4);
             }
             
             gl_FragColor = color;

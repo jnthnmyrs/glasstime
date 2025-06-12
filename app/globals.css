@@ -5,6 +5,34 @@
   --background: #fff;
 }
 
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  overflow-x: hidden;
+  line-height: 1.5;
+  cursor: none; /* Hide cursor everywhere */
+}
+
+/* MOBILE: Disable scrolling and text selection */
+@media (max-width: 768px) {
+  body {
+    overflow: hidden; /* Disable scrolling on mobile */
+    user-select: none; /* Disable text selection on mobile */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    touch-action: none; /* Disable all touch gestures except what we handle */
+    overscroll-behavior: none; /* Prevent overscroll bounce */
+  }
+  
+  html {
+    overflow: hidden; /* Extra safety */
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+}
+
 /* Crazy Ones Component Styles */
 .crazy-ones-container {
   max-width: 42rem; /* max-w-2xl */
