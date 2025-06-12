@@ -293,7 +293,7 @@ export default function LiquidGlassLens({
         width: window.innerWidth,
         height: window.innerHeight,
         x: window.scrollX,
-        y: window.scrollY + 45,
+        y: window.scrollY + 35,
         ignoreElements: (element) => element === canvasRef.current,
         // IMPROVED: Better text rendering settings
         onclone: (clonedDoc) => {

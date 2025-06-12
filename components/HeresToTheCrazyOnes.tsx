@@ -2,12 +2,12 @@
 
 export default function HeresToTheCrazyOnes() {
   return (
-    <div className="max-w-2xl mx-auto space-y-6 text-black select-none py-24">
-      <h1 className="text-5xl lg:text-6xl font-normal leading-tight tracking-tight mb-12">
+    <div className="crazy-ones-container">
+      <h1 className="crazy-ones-title">
         Here's to the crazy ones.
       </h1>
       
-      <div className="text-lg lg:text-xl leading-relaxed space-y-6 text-gray-700 font-normal">
+      <div className="crazy-ones-content">
         <p>
           The misfits. The rebels. The troublemakers. The round pegs in the 
           square holes. The ones who see things differently.
@@ -24,19 +24,15 @@ export default function HeresToTheCrazyOnes() {
           And while some may see them as the crazy ones, we see genius.
         </p>
         
-        <p className="text-lg lg:text-xl font-normal leading-relaxed">
+        <p className="crazy-ones-emphasis">
           Because the people who are crazy enough to think they can change 
           the world, are the ones who do.
         </p>
       </div>
       
-      <div className="pt-12 space-y-1">
-        <div className="text-lg text-gray-700 font-normal">
-          Think Different
-        </div>
-        <div className="text-lg text-gray-700 font-normal">
-          Apple Inc.
-        </div>
+      <div className="crazy-ones-attribution">
+        <div>Think Different</div>
+        <div>Apple Inc.</div>
       </div>
     </div>
   );
