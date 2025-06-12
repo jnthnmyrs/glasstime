@@ -120,7 +120,7 @@ export default function LiquidGlassCanvas({
       }
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd = () => {
       if (isMobile) {
         setIsTouching(false); // Stop tracking touch
 
