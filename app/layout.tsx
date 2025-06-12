@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Glasstime",
+  title: "Glasstime | A desktop experience.",
   description: "A little experiment in webgl by Jonathan Myers",
 };
 

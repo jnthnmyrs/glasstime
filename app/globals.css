@@ -122,6 +122,44 @@ body {
   margin-bottom: 0;
 }
 
+/* Attribution/Signature Styles */
+.attribution-text {
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.25rem;
+  opacity: 0.5; /* opacity-50 */
+  transition-property: opacity; /* transition-opacity */
+  transition-duration: 200ms; /* duration-200 */
+}
+
+.attribution-image {
+  width: 1.5rem; /* w-6 */
+  height: 1.5rem; /* h-6 */
+  opacity: 0.5; /* opacity-50 */
+  transition-property: opacity; /* transition-opacity */
+  transition-duration: 200ms; /* duration-200 */
+}
+
+.attribution-group {
+  /* group class container */
+}
+
+.attribution-group:hover .attribution-text,
+.attribution-group:hover .attribution-image {
+  opacity: 1; /* group-hover:opacity-100 */
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Hardware acceleration for smooth performance */
 .glass-lens,
 .refraction-ring,
