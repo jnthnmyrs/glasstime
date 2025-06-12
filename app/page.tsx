@@ -8,7 +8,9 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white">
       {/* The New Lens™ - renders text directly to canvas with liquid glass effect */}
-      <LiquidGlassCanvas />
+      <div className="relative mx-auto">
+        <LiquidGlassCanvas />
+      </div>
       
       {/* Attribution link positioned over the canvas */}
       <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-10">

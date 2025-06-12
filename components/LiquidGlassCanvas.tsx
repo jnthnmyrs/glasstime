@@ -71,9 +71,9 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
 
-    // Set up text styling to match the original component
+    // Set up text styling to match the original component - LEFT ALIGNED
     ctx.fillStyle = '#000000';
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left'; // Changed from 'center' to 'left'
     ctx.textBaseline = 'top';
 
     // Calculate responsive font sizes
@@ -81,10 +81,11 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     const titleSize = isMobile ? 48 : 60; // 3rem -> 3.75rem on lg
     const contentSize = isMobile ? 18 : 20; // 1.125rem -> 1.25rem on lg
 
-    // Position content in center of canvas
-    const centerX = textCanvas.width / 2;
+    // Position content - LEFT ALIGNED with proper padding
+    const padding = isMobile ? 32 : 64; // p-8 lg:p-16 equivalent
+    const leftX = padding;
     const startY = Math.max(96, (textCanvas.height - 600) / 2); // pt-24 equivalent
-    const maxWidth = Math.min(672, textCanvas.width - 64); // max-w-2xl with padding
+    const maxWidth = Math.min(672, textCanvas.width - padding * 2); // max-w-2xl with padding
 
     let currentY = startY;
 
@@ -101,14 +102,14 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       const metrics = ctx.measureText(testLine);
       
       if (metrics.width > maxWidth && i > 0) {
-        ctx.fillText(titleLine.trim(), centerX, currentY);
+        ctx.fillText(titleLine.trim(), leftX, currentY); // Changed from centerX to leftX
         titleLine = titleWords[i] + ' ';
         currentY += titleSize * 1.25; // line-height: 1.25
       } else {
         titleLine = testLine;
       }
     }
-    ctx.fillText(titleLine.trim(), centerX, currentY);
+    ctx.fillText(titleLine.trim(), leftX, currentY); // Changed from centerX to leftX
     currentY += titleSize * 1.25 + 48; // mb-12 equivalent
 
     // Render content paragraphs
@@ -125,14 +126,14 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
         const metrics = ctx.measureText(testLine);
         
         if (metrics.width > maxWidth && i > 0) {
-          ctx.fillText(line.trim(), centerX, currentY);
+          ctx.fillText(line.trim(), leftX, currentY); // Changed from centerX to leftX
           line = words[i] + ' ';
           currentY += contentSize * 1.625; // line-height: 1.625
         } else {
           line = testLine;
         }
       }
-      ctx.fillText(line.trim(), centerX, currentY);
+      ctx.fillText(line.trim(), leftX, currentY); // Changed from centerX to leftX
       currentY += contentSize * 1.625 + (index < textContent.paragraphs.length - 1 ? 24 : 48); // mb-6 between paragraphs, mb-12 after last
     });
 
@@ -141,7 +142,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     ctx.font = `400 ${contentSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
     
     textContent.attribution.forEach((line) => {
-      ctx.fillText(line, centerX, currentY);
+      ctx.fillText(line, leftX, currentY); // Changed from centerX to leftX
       currentY += contentSize * 1.25 + 4; // space-y-1
     });
 
@@ -186,7 +187,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       }
     `;
 
-    // Fragment shader with liquid glass distortion
+    // Fragment shader with LARGER CLEAR CENTER
     const fragmentShaderSource = `
       precision mediump float;
       uniform sampler2D u_textTexture;
@@ -199,42 +200,75 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
         vec2 uv = v_texCoord;
         vec2 mouse = u_mousePosition / u_resolution;
         
-        // Calculate distance from mouse
-        float dist = distance(uv, mouse);
-        float lensRadius = 0.15; // Adjust lens size
+        // FIX ASPECT RATIO
+        float aspectRatio = u_resolution.x / u_resolution.y;
+        vec2 aspectUV = uv;
+        vec2 aspectMouse = mouse;
         
-        // Only apply distortion within lens radius
+        if (aspectRatio > 1.0) {
+          aspectUV.x = (uv.x - 0.5) * aspectRatio + 0.5;
+          aspectMouse.x = (mouse.x - 0.5) * aspectRatio + 0.5;
+        } else {
+          aspectUV.y = (uv.y - 0.5) / aspectRatio + 0.5;
+          aspectMouse.y = (mouse.y - 0.5) / aspectRatio + 0.5;
+        }
+        
+        float dist = distance(aspectUV, aspectMouse);
+        float lensRadius = 0.12;
+        
         if (dist < lensRadius) {
-          // Normalize distance within lens
           float normalizedDist = dist / lensRadius;
-          vec2 direction = normalize(uv - mouse);
           
-          // Liquid glass distortion - stronger at edges
-          if (normalizedDist > 0.3) {
-            float edgeZone = (normalizedDist - 0.3) / 0.7;
-            float distortionStrength = edgeZone * edgeZone * edgeZone;
+          // INWARD PULL DIRECTION
+          vec2 pullDirection = normalize(aspectMouse - aspectUV);
+          
+          // MUCH LARGER CLEAR ZONE - distortion starts at 60% instead of 20%
+          if (normalizedDist > 0.6) { // Changed from 0.2 to 0.6
+            float edgeZone = (normalizedDist - 0.6) / 0.4; // Adjusted math
             
-            // Radial distortion - content flows toward edges
-            vec2 radialDistortion = direction * distortionStrength * 0.08;
+            // MAGNIFYING GLASS EFFECT - content pulled toward center
+            float pullStrength = pow(edgeZone, 1.8) * 0.18; // Slightly stronger since zone is smaller
             
-            // Swirl effect for liquid behavior
-            float angle = atan(direction.y, direction.x);
-            float swirl = sin(angle * 3.0 + normalizedDist * 6.28 + u_time * 0.5) * edgeZone * 0.02;
-            vec2 swirlOffset = vec2(-direction.y, direction.x) * swirl;
+            // CURVED INWARD FLOW - text bends as it's pulled in
+            float angle = atan(pullDirection.y, pullDirection.x);
+            float curvature = sin(normalizedDist * 3.14159) * edgeZone * 0.5;
+            float curvedAngle = angle + curvature;
             
-            // Apply distortion
-            uv += radialDistortion + swirlOffset;
+            vec2 curvedPull = vec2(cos(curvedAngle), sin(curvedAngle)) * pullStrength;
+            
+            // LIQUID SURFACE TENSION - stronger pull near edges
+            if (normalizedDist > 0.75) { // Adjusted threshold
+              float tensionZone = (normalizedDist - 0.75) / 0.25;
+              float tensionPull = pow(tensionZone, 3.0) * 0.3;
+              curvedPull += pullDirection * tensionPull;
+            }
+            
+            // SWIRLING INWARD MOTION
+            float swirl = sin(angle * 4.0 + normalizedDist * 6.28 + u_time * 0.8) * edgeZone * 0.06;
+            vec2 swirlOffset = vec2(-pullDirection.y, pullDirection.x) * swirl;
+            
+            vec2 totalPull = curvedPull + swirlOffset;
+            
+            // Convert back from aspect-corrected space
+            if (aspectRatio > 1.0) {
+              totalPull.x /= aspectRatio;
+            } else {
+              totalPull.y *= aspectRatio;
+            }
+            
+            // APPLY INWARD PULL
+            uv += totalPull;
           }
           
-          // Chromatic aberration at edges
-          if (normalizedDist > 0.6) {
-            float chromaticStrength = (normalizedDist - 0.6) / 0.4;
-            chromaticStrength = chromaticStrength * chromaticStrength;
+          // CHROMATIC ABERRATION - starts even later for more clear zone
+          if (normalizedDist > 0.7) { // Changed from 0.4 to 0.7
+            float chromaticStrength = (normalizedDist - 0.7) / 0.3; // Adjusted math
+            chromaticStrength = pow(chromaticStrength, 1.0); // Less aggressive curve
             
-            // RGB channel separation
-            vec2 redOffset = direction * chromaticStrength * 0.008;
-            vec2 greenOffset = direction * chromaticStrength * 0.004;
-            vec2 blueOffset = direction * chromaticStrength * 0.012;
+            // Chromatic effects follow the inward pull
+            vec2 redOffset = pullDirection * chromaticStrength * 0.025;
+            vec2 greenOffset = pullDirection * chromaticStrength * 0.012;  
+            vec2 blueOffset = pullDirection * chromaticStrength * 0.035;
             
             float red = texture2D(u_textTexture, uv + redOffset).r;
             float green = texture2D(u_textTexture, uv + greenOffset).g;
@@ -242,18 +276,19 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
             
             vec4 color = vec4(red, green, blue, 1.0);
             
-            // Add prismatic rainbow effect at extreme edges
-            if (normalizedDist > 0.8) {
-              float prismIntensity = (normalizedDist - 0.8) / 0.2;
-              float prismAngle = atan(direction.y, direction.x);
+            // PRISMATIC EFFECT - only at extreme edges
+            if (normalizedDist > 0.85) { // Even more restrictive
+              float prismIntensity = (normalizedDist - 0.85) / 0.15;
+              prismIntensity = pow(prismIntensity, 2.0);
+              float prismAngle = atan(pullDirection.y, pullDirection.x);
               
               vec3 spectrum = vec3(
-                sin(prismAngle * 2.0 + 0.0) * 0.5 + 0.5,
-                sin(prismAngle * 2.0 + 2.09) * 0.5 + 0.5,
-                sin(prismAngle * 2.0 + 4.18) * 0.5 + 0.5
+                sin(prismAngle * 3.0 + u_time * 0.5 + 0.0) * 0.5 + 0.5,
+                sin(prismAngle * 3.0 + u_time * 0.7 + 2.09) * 0.5 + 0.5,
+                sin(prismAngle * 3.0 + u_time * 0.6 + 4.18) * 0.5 + 0.5
               );
               
-              color.rgb = mix(color.rgb, spectrum, prismIntensity * 0.2);
+              color.rgb = mix(color.rgb, spectrum, prismIntensity * 0.4);
             }
             
             gl_FragColor = color;
@@ -261,20 +296,22 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
           }
         }
         
-        // Sample the original text texture
+        // Sample original texture - this is the CLEAR ZONE
         vec4 color = texture2D(u_textTexture, uv);
         
-        // Add subtle glass effects within lens area
+        // Very subtle glass surface effects in clear zone
         if (dist < lensRadius) {
           float normalizedDist = dist / lensRadius;
           
-          // Very subtle glass tinting
-          color.rgb *= vec3(0.99, 0.995, 1.0);
+          // Very light glass tinting - barely noticeable
+          color.rgb *= vec3(0.995, 0.998, 1.0);
           
-          // Subtle shimmer effect
+          // Subtle shimmer only in outer part of clear zone
           if (normalizedDist > 0.5) {
-            float shimmer = sin(normalizedDist * 15.0 + u_time) * 0.02;
-            color.rgb += vec3(shimmer * 0.3, shimmer * 0.5, shimmer * 0.8);
+            vec2 pullDir = normalize(aspectMouse - aspectUV);
+            float pullAngle = atan(pullDir.y, pullDir.x);
+            float shimmer = sin(pullAngle * 6.0 + normalizedDist * 10.0 + u_time * 2.0) * 0.02; // Much more subtle
+            color.rgb += vec3(shimmer * 0.2, shimmer * 0.3, shimmer * 0.4);
           }
         }
         
@@ -402,10 +439,11 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       ref={canvasRef}
       className={`fixed inset-0 ${className}`}
       style={{
-        width: '100vw',
-        height: '100vh',
-        cursor: 'none'
-      }}
-    />
+          width: '100vw',
+          height: '100vh',
+          cursor: 'none'
+        }}
+        />
+
   );
 } 
