@@ -59,11 +59,23 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // MOBILE & DESKTOP EVENT HANDLING
+  // MOBILE & DESKTOP EVENT HANDLING with OFFSET
   useEffect(() => {
+    // Calculate offset - more on mobile since fingers are bigger
+    const getOffset = () => {
+      return {
+        x: 0, // No horizontal offset
+        y: isMobile ? -60 : -30 // Lens center above pointer (negative = upward)
+      };
+    };
+
     // Mouse events for desktop
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
+      const offset = getOffset();
+      setMousePosition({ 
+        x: e.clientX + offset.x, 
+        y: e.clientY + offset.y 
+      });
       if (!isMobile) {
         setShowLens(true);
       }
@@ -73,7 +85,11 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     const handleTouchStart = (e: TouchEvent) => {
       if (isMobile && e.touches.length === 1) {
         const touch = e.touches[0];
-        setMousePosition({ x: touch.clientX, y: touch.clientY });
+        const offset = getOffset();
+        setMousePosition({ 
+          x: touch.clientX + offset.x, 
+          y: touch.clientY + offset.y 
+        });
         setShowLens(true);
         // Don't prevent default - allow scrolling
       }
@@ -82,7 +98,11 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     const handleTouchMove = (e: TouchEvent) => {
       if (isMobile && e.touches.length === 1 && showLens) {
         const touch = e.touches[0];
-        setMousePosition({ x: touch.clientX, y: touch.clientY });
+        const offset = getOffset();
+        setMousePosition({ 
+          x: touch.clientX + offset.x, 
+          y: touch.clientY + offset.y 
+        });
         // Don't prevent default - allow scrolling while lens is active
       }
     };
@@ -269,7 +289,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
         }
         
         float dist = distance(aspectUV, aspectMouse);
-        float lensRadius = u_isMobile ? 0.08 : 0.12; // Smaller lens on mobile
+        float lensRadius = u_isMobile ? 0.25 : 0.12; // Smaller lens on mobile
         
         if (dist < lensRadius) {
           float normalizedDist = dist / lensRadius;
@@ -289,8 +309,8 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
             // INWARD PULL - simpler calculation for mobile
             vec2 toCenter = mouse - uv;
             float pullStrength = u_isMobile ? 
-              pow(edgeZone, 1.2) * 0.04 :  // Gentler on mobile
-              pow(edgeZone, 1.5) * 0.08;   // Full effect on desktop
+              pow(edgeZone, 1.5) * 0.7 :  // Gentler on mobile
+              pow(edgeZone, 1.5) * 0.7;   // Full effect on desktop
             
             vec2 inwardPull = toCenter * pullStrength;
             
@@ -318,7 +338,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
             chromaticStrength = pow(chromaticStrength, 1.2);
             
             vec2 flowDirection = normalize(mouse - uv);
-            float chromatic = u_isMobile ? 0.004 : 0.008; // Reduced on mobile
+            float chromatic = u_isMobile ? 0.07 : 0.02; // Reduced on mobile
             
             vec2 redOffset = flowDirection * chromaticStrength * chromatic;
             vec2 greenOffset = flowDirection * chromaticStrength * chromatic * 0.5;  
