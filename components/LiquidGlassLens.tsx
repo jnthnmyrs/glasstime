@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useCallback, useState } from 'react';
+import { useGesture } from '@use-gesture/react';
 import html2canvas from 'html2canvas';
 
 interface LiquidGlassLensProps {
@@ -26,29 +27,113 @@ export default function LiquidGlassLens({
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
   const textureRef = useRef<WebGLTexture | null>(null);
-  const frameRef = useRef<number | undefined>(undefined);
+  const animationFrameRef = useRef<number | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [pageTexture, setPageTexture] = useState<{ width: number; height: number } | null>(null);
+  const [isPressed, setIsPressed] = useState(false);
+  const [currentSize, setCurrentSize] = useState(0);
+  const [isWebGLReady, setIsWebGLReady] = useState(false);
+  
+  // FIXED: Safe initial position that works with SSR
+  const [smoothedPos, setSmoothedPos] = useState({ 
+    x: propX || 0, 
+    y: propY || 0 
+  });
 
-  const [mousePos, setMousePos] = useState({ x: propX || 0, y: propY || 0 });
-
- 
-
+  // Initialize position after component mounts (when window is available)
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-     
+    if (typeof window !== 'undefined' && !propX && !propY) {
+      setSmoothedPos({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2
+      });
+    }
+  }, []); // Run once on mount
+
+  // Set up gesture handlers
+  useGesture(
+    {
+      // Mouse move with smooth interpolation
+      onMove: ({ xy: [x, y], velocity, direction, intentional }) => {
+        // Only update if this is an intentional movement (not just noise)
+        if (intentional) {
+          const targetX = propX !== undefined ? propX : x;
+          const targetY = propY !== undefined ? propY : y;
+          
+          setSmoothedPos({ x: targetX, y: targetY });
+        }
+      },
+      
+      // Handle mouse press/release
+      onPointerDown: ({ event }) => {
+        if (event.button === 0) {
+          console.log('🖱️ Mouse pressed - activating lens');
+          setIsPressed(true);
+          if (typeof document !== 'undefined') {
+            document.body.style.cursor = 'none';
+          }
+        }
+      },
+      
+      onPointerUp: ({ event }) => {
+        if (event.button === 0) {
+          console.log('🖱️ Mouse released - deactivating lens');
+          setIsPressed(false);
+          if (typeof document !== 'undefined') {
+            document.body.style.cursor = 'auto';
+          }
+        }
+      }
+    },
+    {
+      // Configuration for smooth movement
+      move: {
+        // Add some filtering/smoothing
+        filterTaps: true,
+        threshold: 1, // Minimum movement to register
+      },
+      // FIXED: Safe document reference
+      target: typeof document !== 'undefined' ? document : undefined,
+      eventOptions: { passive: false }
+    }
+  );
+
+  // Size animation (keep your existing logic)
+  useEffect(() => {
+    const targetSize = isPressed ? size : 0;
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    
+    const animate = () => {
+      setCurrentSize(prevSize => {
+        const diff = targetSize - prevSize;
+        const step = diff * 0.001;
+        
+        if (Math.abs(diff) < 1) {
+          return targetSize;
+        }
+        
+        animationFrameRef.current = requestAnimationFrame(animate);
+        return prevSize + step;
+      });
+
+
     };
-
-    document.addEventListener('mousemove', handleMouseMove);
-
+    
+    animationFrameRef.current = requestAnimationFrame(animate);
+    
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
-  }, []);
+  }, [isPressed, size]);
 
-  const x = propX !== undefined ? propX : mousePos.x;
-  const y = propY !== undefined ? propY : mousePos.y;
+  // Use the smoothed position
+  const x = smoothedPos.x;
+  const y = smoothedPos.y;
 
   // Add debugging info
   useEffect(() => {
@@ -381,6 +466,7 @@ export default function LiquidGlassLens({
 
     canvas.style.left = `${x - size/2}px`;
     canvas.style.top = `${y - size/2}px`;
+
   }, [x, y, size]);
 
   if (!isVisible) return null;
@@ -392,11 +478,13 @@ export default function LiquidGlassLens({
       height={size}
       className={`fixed pointer-events-none z-50 ${className}`}
       style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        border: debugMode ? '1px solid rgba(0,255,0,0.3)' : 'none'
-      }}
+        width: `${Math.max(1, currentSize)}px`,
+        height: `${Math.max(1, currentSize)}px`,
+        opacity: currentSize > 0 ? 1 : 0,
+        transition: 'opacity 0.1s ease',
+        transform: `scale(${currentSize / size})`,
 
+      }}
     />
   );
 }
