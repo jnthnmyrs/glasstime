@@ -10,7 +10,7 @@ export default function Home() {
     <div className="min-h-screen bg-white">
       <div className="relative w-full min-h-screen p-8 lg:p-16">
         <HeresToTheCrazyOnes />
-        <LiquidGlassLens size={200} isVisible={true}  />
+        <LiquidGlassLens size={200} />
       </div>
     </div>
   );
