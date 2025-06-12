@@ -15,6 +15,8 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isReady, setIsReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [isMobile, setIsMobile] = useState(false);
+  const [showLens, setShowLens] = useState(false);
 
   // The text content from HeresToTheCrazyOnes
   const textContent = {
@@ -27,6 +29,19 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     ],
     attribution: ["Think Different", "Apple Inc."]
   };
+
+  // Detect mobile and initialize
+  useEffect(() => {
+    const checkMobile = () => {
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isMobileViewport = window.innerWidth <= 768;
+      setIsMobile(isTouchDevice || isMobileViewport);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Initialize canvas size
   useEffect(() => {
@@ -44,15 +59,54 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Track mouse movement
+  // MOBILE & DESKTOP EVENT HANDLING
   useEffect(() => {
+    // Mouse events for desktop
     const handleMouseMove = (e: MouseEvent) => {
       setMousePosition({ x: e.clientX, y: e.clientY });
+      if (!isMobile) {
+        setShowLens(true);
+      }
     };
 
+    // Touch events for mobile
+    const handleTouchStart = (e: TouchEvent) => {
+      if (isMobile && e.touches.length === 1) {
+        const touch = e.touches[0];
+        setMousePosition({ x: touch.clientX, y: touch.clientY });
+        setShowLens(true);
+        // Don't prevent default - allow scrolling
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isMobile && e.touches.length === 1 && showLens) {
+        const touch = e.touches[0];
+        setMousePosition({ x: touch.clientX, y: touch.clientY });
+        // Don't prevent default - allow scrolling while lens is active
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (isMobile) {
+        // Keep lens visible for a moment, then hide
+        setTimeout(() => setShowLens(false), 1000);
+      }
+    };
+
+    // Add event listeners
     document.addEventListener('mousemove', handleMouseMove);
-    return () => document.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isMobile, showLens]);
 
   // Create text texture from canvas 2D rendering
   const createTextTexture = useCallback(() => {
@@ -71,21 +125,20 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
 
-    // Set up text styling to match the original component - LEFT ALIGNED
+    // Set up text styling - LEFT ALIGNED
     ctx.fillStyle = '#000000';
-    ctx.textAlign = 'left'; // Changed from 'center' to 'left'
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
     // Calculate responsive font sizes
-    const isMobile = canvasSize.width <= 768;
-    const titleSize = isMobile ? 48 : 60; // 3rem -> 3.75rem on lg
-    const contentSize = isMobile ? 18 : 20; // 1.125rem -> 1.25rem on lg
+    const titleSize = isMobile ? 32 : 60; // Smaller on mobile
+    const contentSize = isMobile ? 14 : 20; // Smaller on mobile
 
     // Position content - LEFT ALIGNED with proper padding
-    const padding = isMobile ? 32 : 64; // p-8 lg:p-16 equivalent
+    const padding = isMobile ? 20 : 64;
     const leftX = padding;
-    const startY = Math.max(96, (textCanvas.height - 600) / 2); // pt-24 equivalent
-    const maxWidth = Math.min(672, textCanvas.width - padding * 2); // max-w-2xl with padding
+    const startY = Math.max(60, (textCanvas.height - 400) / 2); // Adjusted for mobile
+    const maxWidth = Math.min(672, textCanvas.width - padding * 2);
 
     let currentY = startY;
 
@@ -102,19 +155,19 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       const metrics = ctx.measureText(testLine);
       
       if (metrics.width > maxWidth && i > 0) {
-        ctx.fillText(titleLine.trim(), leftX, currentY); // Changed from centerX to leftX
+        ctx.fillText(titleLine.trim(), leftX, currentY);
         titleLine = titleWords[i] + ' ';
-        currentY += titleSize * 1.25; // line-height: 1.25
+        currentY += titleSize * 1.25;
       } else {
         titleLine = testLine;
       }
     }
-    ctx.fillText(titleLine.trim(), leftX, currentY); // Changed from centerX to leftX
-    currentY += titleSize * 1.25 + 48; // mb-12 equivalent
+    ctx.fillText(titleLine.trim(), leftX, currentY);
+    currentY += titleSize * 1.25 + (isMobile ? 24 : 48);
 
     // Render content paragraphs
     ctx.font = `400 ${contentSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
-    ctx.fillStyle = '#374151'; // text-gray-700
+    ctx.fillStyle = '#374151';
     ctx.letterSpacing = '0';
 
     textContent.paragraphs.forEach((paragraph, index) => {
@@ -126,24 +179,24 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
         const metrics = ctx.measureText(testLine);
         
         if (metrics.width > maxWidth && i > 0) {
-          ctx.fillText(line.trim(), leftX, currentY); // Changed from centerX to leftX
+          ctx.fillText(line.trim(), leftX, currentY);
           line = words[i] + ' ';
-          currentY += contentSize * 1.625; // line-height: 1.625
+          currentY += contentSize * 1.625;
         } else {
           line = testLine;
         }
       }
-      ctx.fillText(line.trim(), leftX, currentY); // Changed from centerX to leftX
-      currentY += contentSize * 1.625 + (index < textContent.paragraphs.length - 1 ? 24 : 48); // mb-6 between paragraphs, mb-12 after last
+      ctx.fillText(line.trim(), leftX, currentY);
+      currentY += contentSize * 1.625 + (index < textContent.paragraphs.length - 1 ? 16 : 32);
     });
 
     // Render attribution
-    currentY += 48; // pt-12 equivalent
+    currentY += 32;
     ctx.font = `400 ${contentSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
     
     textContent.attribution.forEach((line) => {
-      ctx.fillText(line, leftX, currentY); // Changed from centerX to leftX
-      currentY += contentSize * 1.25 + 4; // space-y-1
+      ctx.fillText(line, leftX, currentY);
+      currentY += contentSize * 1.25 + 4;
     });
 
     // Create WebGL texture from the canvas
@@ -158,9 +211,9 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     return texture;
-  }, [canvasSize, textContent]);
+  }, [canvasSize, textContent, isMobile]);
 
-  // Initialize WebGL
+  // Initialize WebGL with mobile optimizations
   const initWebGL = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return false;
@@ -171,7 +224,8 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
 
     const gl = canvas.getContext('webgl', {
       premultipliedAlpha: false,
-      antialias: true,
+      antialias: !isMobile, // Disable antialiasing on mobile for performance
+      powerPreference: isMobile ? 'low-power' : 'high-performance'
     });
     if (!gl) return false;
 
@@ -187,13 +241,14 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       }
     `;
 
-    // Fragment shader with LARGER CLEAR CENTER
+    // Fragment shader with MOBILE OPTIMIZATIONS
     const fragmentShaderSource = `
-      precision mediump float;
+      precision ${isMobile ? 'mediump' : 'highp'} float;
       uniform sampler2D u_textTexture;
       uniform vec2 u_resolution;
       uniform vec2 u_mousePosition;
       uniform float u_time;
+      uniform bool u_isMobile;
       varying vec2 v_texCoord;
       
       void main() {
@@ -214,73 +269,74 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
         }
         
         float dist = distance(aspectUV, aspectMouse);
-        float lensRadius = 0.12;
+        float lensRadius = u_isMobile ? 0.08 : 0.12; // Smaller lens on mobile
         
         if (dist < lensRadius) {
           float normalizedDist = dist / lensRadius;
           
-          // INWARD PULL DIRECTION
-          vec2 pullDirection = normalize(aspectMouse - aspectUV);
+          // Start with the ORIGINAL position
+          vec2 sampleUV = uv;
           
-          // MUCH LARGER CLEAR ZONE - distortion starts at 60% instead of 20%
-          if (normalizedDist > 0.6) { // Changed from 0.2 to 0.6
-            float edgeZone = (normalizedDist - 0.6) / 0.4; // Adjusted math
+          // CLEAR ZONE - minimal distortion
+          if (normalizedDist <= 0.6) {
+            vec2 offset = (uv - mouse) * 0.03 * normalizedDist; // Reduced for mobile
+            sampleUV = uv - offset;
+          }
+          // MELTING ZONE - simplified for mobile performance
+          else {
+            float edgeZone = (normalizedDist - 0.6) / 0.4;
             
-            // MAGNIFYING GLASS EFFECT - content pulled toward center
-            float pullStrength = pow(edgeZone, 1.8) * 0.18; // Slightly stronger since zone is smaller
+            // INWARD PULL - simpler calculation for mobile
+            vec2 toCenter = mouse - uv;
+            float pullStrength = u_isMobile ? 
+              pow(edgeZone, 1.2) * 0.04 :  // Gentler on mobile
+              pow(edgeZone, 1.5) * 0.08;   // Full effect on desktop
             
-            // CURVED INWARD FLOW - text bends as it's pulled in
-            float angle = atan(pullDirection.y, pullDirection.x);
-            float curvature = sin(normalizedDist * 3.14159) * edgeZone * 0.5;
-            float curvedAngle = angle + curvature;
+            vec2 inwardPull = toCenter * pullStrength;
             
-            vec2 curvedPull = vec2(cos(curvedAngle), sin(curvedAngle)) * pullStrength;
-            
-            // LIQUID SURFACE TENSION - stronger pull near edges
-            if (normalizedDist > 0.75) { // Adjusted threshold
-              float tensionZone = (normalizedDist - 0.75) / 0.25;
-              float tensionPull = pow(tensionZone, 3.0) * 0.3;
-              curvedPull += pullDirection * tensionPull;
+            // Simplified effects for mobile
+            if (!u_isMobile) {
+              // CURVED FLOW - only on desktop
+              float angle = atan(toCenter.y, toCenter.x);
+              float curvature = sin(normalizedDist * 3.14159) * edgeZone * 0.3;
+              float curvedAngle = angle + curvature;
+              vec2 curvedFlow = vec2(cos(curvedAngle), sin(curvedAngle)) * length(inwardPull);
+              
+              // SWIRLING MOTION - only on desktop
+              float swirl = sin(angle * 4.0 + normalizedDist * 6.28 + u_time * 0.8) * edgeZone * 0.02;
+              vec2 swirlOffset = vec2(-toCenter.y, toCenter.x) * swirl / length(toCenter);
+              
+              inwardPull = curvedFlow + swirlOffset;
             }
             
-            // SWIRLING INWARD MOTION
-            float swirl = sin(angle * 4.0 + normalizedDist * 6.28 + u_time * 0.8) * edgeZone * 0.06;
-            vec2 swirlOffset = vec2(-pullDirection.y, pullDirection.x) * swirl;
-            
-            vec2 totalPull = curvedPull + swirlOffset;
-            
-            // Convert back from aspect-corrected space
-            if (aspectRatio > 1.0) {
-              totalPull.x /= aspectRatio;
-            } else {
-              totalPull.y *= aspectRatio;
-            }
-            
-            // APPLY INWARD PULL
-            uv += totalPull;
+            sampleUV = uv + inwardPull;
           }
           
-          // CHROMATIC ABERRATION - starts even later for more clear zone
-          if (normalizedDist > 0.7) { // Changed from 0.4 to 0.7
-            float chromaticStrength = (normalizedDist - 0.7) / 0.3; // Adjusted math
-            chromaticStrength = pow(chromaticStrength, 1.0); // Less aggressive curve
+          // CHROMATIC ABERRATION - reduced on mobile
+          if (normalizedDist > 0.75) { // Start later on mobile
+            float chromaticStrength = (normalizedDist - 0.75) / 0.25;
+            chromaticStrength = pow(chromaticStrength, 1.2);
             
-            // Chromatic effects follow the inward pull
-            vec2 redOffset = pullDirection * chromaticStrength * 0.025;
-            vec2 greenOffset = pullDirection * chromaticStrength * 0.012;  
-            vec2 blueOffset = pullDirection * chromaticStrength * 0.035;
+            vec2 flowDirection = normalize(mouse - uv);
+            float chromatic = u_isMobile ? 0.004 : 0.008; // Reduced on mobile
             
-            float red = texture2D(u_textTexture, uv + redOffset).r;
-            float green = texture2D(u_textTexture, uv + greenOffset).g;
-            float blue = texture2D(u_textTexture, uv + blueOffset).b;
+            vec2 redOffset = flowDirection * chromaticStrength * chromatic;
+            vec2 greenOffset = flowDirection * chromaticStrength * chromatic * 0.5;  
+            vec2 blueOffset = flowDirection * chromaticStrength * chromatic * 1.5;
+            
+            float red = texture2D(u_textTexture, sampleUV + redOffset).r;
+            float green = texture2D(u_textTexture, sampleUV + greenOffset).g;
+            float blue = texture2D(u_textTexture, sampleUV + blueOffset).b;
             
             vec4 color = vec4(red, green, blue, 1.0);
             
-            // PRISMATIC EFFECT - only at extreme edges
-            if (normalizedDist > 0.85) { // Even more restrictive
-              float prismIntensity = (normalizedDist - 0.85) / 0.15;
+            // PRISMATIC EFFECT - only on desktop or very edge on mobile
+            if (normalizedDist > (u_isMobile ? 0.9 : 0.85)) {
+              float prismStart = u_isMobile ? 0.9 : 0.85;
+              float prismRange = u_isMobile ? 0.1 : 0.15;
+              float prismIntensity = (normalizedDist - prismStart) / prismRange;
               prismIntensity = pow(prismIntensity, 2.0);
-              float prismAngle = atan(pullDirection.y, pullDirection.x);
+              float prismAngle = atan(flowDirection.y, flowDirection.x);
               
               vec3 spectrum = vec3(
                 sin(prismAngle * 3.0 + u_time * 0.5 + 0.0) * 0.5 + 0.5,
@@ -288,33 +344,23 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
                 sin(prismAngle * 3.0 + u_time * 0.6 + 4.18) * 0.5 + 0.5
               );
               
-              color.rgb = mix(color.rgb, spectrum, prismIntensity * 0.4);
+              float spectrumIntensity = u_isMobile ? 0.2 : 0.4;
+              color.rgb = mix(color.rgb, spectrum, prismIntensity * spectrumIntensity);
             }
             
             gl_FragColor = color;
             return;
           }
-        }
-        
-        // Sample original texture - this is the CLEAR ZONE
-        vec4 color = texture2D(u_textTexture, uv);
-        
-        // Very subtle glass surface effects in clear zone
-        if (dist < lensRadius) {
-          float normalizedDist = dist / lensRadius;
           
-          // Very light glass tinting - barely noticeable
+          // Sample the locally distorted content
+          vec4 color = texture2D(u_textTexture, sampleUV);
           color.rgb *= vec3(0.995, 0.998, 1.0);
-          
-          // Subtle shimmer only in outer part of clear zone
-          if (normalizedDist > 0.5) {
-            vec2 pullDir = normalize(aspectMouse - aspectUV);
-            float pullAngle = atan(pullDir.y, pullDir.x);
-            float shimmer = sin(pullAngle * 6.0 + normalizedDist * 10.0 + u_time * 2.0) * 0.02; // Much more subtle
-            color.rgb += vec3(shimmer * 0.2, shimmer * 0.3, shimmer * 0.4);
-          }
+          gl_FragColor = color;
+          return;
         }
         
+        // Outside lens - normal sampling
+        vec4 color = texture2D(u_textTexture, uv);
         gl_FragColor = color;
       }
     `;
@@ -377,9 +423,9 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     programRef.current = program;
 
     return true;
-  }, [canvasSize]);
+  }, [canvasSize, isMobile]);
 
-  // Render loop
+  // Render loop with mobile optimizations
   const render = useCallback(() => {
     const gl = glRef.current;
     const program = programRef.current;
@@ -388,7 +434,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     if (!gl || !program || !texture) return;
 
     gl.viewport(0, 0, canvasSize.width, canvasSize.height);
-    gl.clearColor(1, 1, 1, 1); // White background
+    gl.clearColor(1, 1, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.useProgram(program);
@@ -397,6 +443,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     gl.uniform2f(gl.getUniformLocation(program, 'u_resolution'), canvasSize.width, canvasSize.height);
     gl.uniform2f(gl.getUniformLocation(program, 'u_mousePosition'), mousePosition.x, mousePosition.y);
     gl.uniform1f(gl.getUniformLocation(program, 'u_time'), Date.now() / 1000);
+    gl.uniform1i(gl.getUniformLocation(program, 'u_isMobile'), isMobile ? 1 : 0);
 
     // Bind texture
     gl.activeTexture(gl.TEXTURE0);
@@ -404,7 +451,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     gl.uniform1i(gl.getUniformLocation(program, 'u_textTexture'), 0);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }, [canvasSize, mousePosition]);
+  }, [canvasSize, mousePosition, isMobile]);
 
   // Initialize everything
   useEffect(() => {
@@ -420,30 +467,42 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     }
   }, [canvasSize, initWebGL, createTextTexture]);
 
-  // Animation loop
+  // Animation loop - reduced framerate on mobile
   useEffect(() => {
     if (!isReady) return;
 
     let animationId: number;
-    const animate = () => {
-      render();
+    let lastRender = 0;
+    const targetFPS = isMobile ? 30 : 60; // Reduced FPS on mobile
+    const frameInterval = 1000 / targetFPS;
+
+    const animate = (currentTime: number) => {
+      if (currentTime - lastRender >= frameInterval) {
+        render();
+        lastRender = currentTime;
+      }
       animationId = requestAnimationFrame(animate);
     };
 
-    animate();
+    animate(0);
     return () => cancelAnimationFrame(animationId);
-  }, [isReady, render]);
+  }, [isReady, render, isMobile]);
+
+  // Only show lens when appropriate
+  const shouldShowLens = isMobile ? showLens : true;
 
   return (
     <canvas
       ref={canvasRef}
       className={`fixed inset-0 ${className}`}
       style={{
-          width: '100vw',
-          height: '100vh',
-          cursor: 'none'
-        }}
-        />
-
+        width: '100vw',
+        height: '100vh',
+        cursor: isMobile ? 'default' : 'none',
+        pointerEvents: 'none', // CRITICAL: Allows scrolling through the canvas
+        opacity: shouldShowLens ? 1 : 1, // Always visible, lens controlled by shader
+        touchAction: 'auto' // Allow all touch gestures
+      }}
+    />
   );
 } 
