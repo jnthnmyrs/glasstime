@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import html2canvas from 'html2canvas';
+import React from 'react';
 
 interface LiquidGlassLensProps {
   x?: number;
@@ -10,15 +11,17 @@ interface LiquidGlassLensProps {
   size?: number;
   intensity?: number;
   className?: string;
+  allowScrollOnMobile?: boolean;
 }
 
-export default function LiquidGlassLens({ 
+export default React.memo(function LiquidGlassLens({ 
   x: propX,
   y: propY,
   isVisible = true,
   size = 200, 
   // intensity = 1,
-  className = '' 
+  className = '',
+  allowScrollOnMobile = false
 }: LiquidGlassLensProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<WebGLRenderingContext | null>(null);
@@ -37,6 +40,9 @@ export default function LiquidGlassLens({
     x: propX || 0, 
     y: propY || 0 
   });
+
+  // Add a state to track if lens is active
+  const [isLensActive, setIsLensActive] = useState(true);
 
   // Check if device is mobile
   useEffect(() => {
@@ -71,16 +77,123 @@ export default function LiquidGlassLens({
     }
   }, [propX, propY]);
 
-  // Track pointer events (mouse + touch)
+  // First define captureTexture
+  const captureTexture = useCallback(async () => {
+    if (!glRef.current || !programRef.current || !canvasRef.current) return;
+    
+    // Throttle texture captures (especially on mobile)
+    const now = Date.now();
+    const minCaptureInterval = isMobile ? 2000 : 1000; // Longer interval to reduce flashing
+    
+    if (now - lastCaptureTimeRef.current < minCaptureInterval) {
+      return;
+    }
+    
+    lastCaptureTimeRef.current = now;
+    
+    try {
+      // Store current canvas position to restore it exactly
+      const canvasEl = canvasRef.current;
+      const originalVisibility = canvasEl.style.visibility;
+      
+      // Instead of hiding, move offscreen to avoid flash
+      canvasEl.style.visibility = 'hidden';
+      
+      // Mobile-optimized settings
+      const captureScale = isMobile ? 0.5 : 1;
+      const scrollOffset = isMobile ? 0 : 35;
+      
+      const pageCanvas = await html2canvas(document.body, {
+        allowTaint: true,
+        useCORS: true,
+        scale: captureScale,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        x: window.scrollX,
+        y: window.scrollY + scrollOffset,
+        ignoreElements: (element) => element === canvasRef.current,
+        onclone: (clonedDoc) => {
+          const style = clonedDoc.createElement('style');
+          style.textContent = `
+            * {
+              color: rgb(0, 0, 0) !important;
+              background-color: rgb(255, 255, 255) !important;
+              font-weight: normal !important;
+              -webkit-font-smoothing: antialiased !important;
+              -moz-osx-font-smoothing: grayscale !important;
+            }
+          `;
+          clonedDoc.head.appendChild(style);
+        }
+      });
+
+      // Restore canvas visibility
+      canvasEl.style.visibility = originalVisibility;
+
+      const gl = glRef.current;
+      
+      // Don't update state if component is unmounting
+      if (!gl) return;
+      
+      setPageTexture({
+        width: pageCanvas.width,
+        height: pageCanvas.height
+      });
+
+      // Reuse texture if possible
+      let texture = textureRef.current;
+      if (!texture) {
+        texture = gl.createTexture();
+        textureRef.current = texture;
+      }
+      
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pageCanvas);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    } catch (error) {
+      console.error('❌ Failed to capture:', error);
+      // Make sure canvas is visible even if capture fails
+      if (canvasRef.current) {
+        canvasRef.current.style.visibility = 'visible';
+      }
+    }
+  }, [isMobile]);
+
+  // Then define resetInteractionTimeout which uses captureTexture
+  const resetInteractionTimeout = useCallback(() => {
+    setIsInteracting(true);
+    
+    // Clear existing timeout
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
+    }
+    
+    // Set a new timeout
+    interactionTimeoutRef.current = setTimeout(() => {
+      setIsInteracting(false);
+      captureTexture();
+    }, 500);
+  }, [captureTexture]);
+
+  // Then use both in the event handlers useEffect
   useEffect(() => {
     // Create handlers for both mouse and touch events
     const handleMouseMove = (e: MouseEvent) => {
-      e.preventDefault();
       setPointerPos({ x: e.clientX, y: e.clientY });
       resetInteractionTimeout();
     };
 
     const handleTouchMove = (e: TouchEvent) => {
+      // Only prevent default when lens is active
+      if (isLensActive) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
       if (e.touches.length > 0) {
         const touch = e.touches[0];
         setPointerPos({ x: touch.clientX, y: touch.clientY });
@@ -89,6 +202,12 @@ export default function LiquidGlassLens({
     };
     
     const handleTouchStart = (e: TouchEvent) => {
+      // Only prevent default when lens is active
+      if (isLensActive) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
       if (e.touches.length > 0) {
         const touch = e.touches[0];
         setPointerPos({ x: touch.clientX, y: touch.clientY });
@@ -96,25 +215,9 @@ export default function LiquidGlassLens({
         resetInteractionTimeout();
       }
     };
-    
-    // Reset the texture after user stops interacting
-    const resetInteractionTimeout = () => {
-      setIsInteracting(true);
-      
-      // Clear existing timeout
-      if (interactionTimeoutRef.current) {
-        clearTimeout(interactionTimeoutRef.current);
-      }
-      
-      // Set a new timeout
-      interactionTimeoutRef.current = setTimeout(() => {
-        setIsInteracting(false);
-        captureTexture();
-      }, 500); // Wait 500ms after interaction stops before re-capturing
-    };
 
-    // Add event listeners based on device type
-    document.addEventListener('mousemove', handleMouseMove, { passive: false });
+    // Add event listeners directly to document
+    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchstart', handleTouchStart, { passive: false });
 
@@ -127,13 +230,19 @@ export default function LiquidGlassLens({
         clearTimeout(interactionTimeoutRef.current);
       }
     };
-  }, []);
+  }, [isLensActive, resetInteractionTimeout]);
 
   // Use pointer position or props
   const x = propX !== undefined ? propX : pointerPos.x;
   const y = propY !== undefined ? propY : pointerPos.y;
 
   const initWebGL = useCallback(() => {
+    // Add a flag to prevent multiple initializations
+    if (glRef.current) {
+      console.log('🔄 WebGL already initialized, skipping');
+      return true;
+    }
+    
     console.log('🔧 Initializing WebGL...');
     const canvas = canvasRef.current;
     if (!canvas) return false;
@@ -355,75 +464,6 @@ export default function LiquidGlassLens({
     return true;
   }, []);
 
-  const captureTexture = useCallback(async () => {
-    if (!glRef.current || !programRef.current || !canvasRef.current) return;
-    
-    // Throttle texture captures (especially on mobile)
-    const now = Date.now();
-    const minCaptureInterval = isMobile ? 1000 : 500; // Longer interval on mobile
-    
-    if (isInteracting && now - lastCaptureTimeRef.current < minCaptureInterval) {
-      return;
-    }
-    
-    lastCaptureTimeRef.current = now;
-    
-    try {
-      // Mobile-optimized settings
-      const captureScale = isMobile ? 0.5 : 1;
-      const scrollOffset = isMobile ? 0 : 35; // Adjust based on device
-      
-      const pageCanvas = await html2canvas(document.body, {
-        allowTaint: true,
-        useCORS: true,
-        scale: captureScale, // Lower resolution for mobile
-        width: window.innerWidth,
-        height: window.innerHeight,
-        x: window.scrollX,
-        y: window.scrollY + scrollOffset,
-        ignoreElements: (element) => element === canvasRef.current,
-        // Better text rendering settings
-        onclone: (clonedDoc) => {
-          const style = clonedDoc.createElement('style');
-          style.textContent = `
-            * {
-              color: rgb(0, 0, 0) !important;
-              background-color: rgb(255, 255, 255) !important;
-              font-weight: normal !important;
-              -webkit-font-smoothing: antialiased !important;
-              -moz-osx-font-smoothing: grayscale !important;
-            }
-          `;
-          clonedDoc.head.appendChild(style);
-        }
-      });
-
-      const gl = glRef.current;
-      
-      setPageTexture({
-        width: pageCanvas.width,
-        height: pageCanvas.height
-      });
-
-      // Reuse texture if possible
-      let texture = textureRef.current;
-      if (!texture) {
-        texture = gl.createTexture();
-        textureRef.current = texture;
-      }
-      
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pageCanvas);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-    } catch (error) {
-      console.error('❌ Failed to capture:', error);
-    }
-  }, [isMobile, isInteracting]);
-
   const render = useCallback(() => {
     if (!glRef.current || !programRef.current || !textureRef.current || !pageTexture) return;
 
@@ -467,11 +507,15 @@ export default function LiquidGlassLens({
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout | null = null;
     
+    // Only do periodic updates when not actively interacting
     if (isWebGLReady && !isInteracting) {
-      // Only set up refresh interval when not interacting
       refreshInterval = setInterval(() => {
-        captureTexture();
-      }, isMobile ? 3000 : 2000); // Less frequent on mobile to save battery
+        // Only capture if enough time has passed since last capture
+        const now = Date.now();
+        if (now - lastCaptureTimeRef.current > (isMobile ? 3000 : 2000)) {
+          captureTexture();
+        }
+      }, isMobile ? 5000 : 3000); // Less frequent updates to reduce flashing
     }
     
     return () => {
@@ -479,7 +523,7 @@ export default function LiquidGlassLens({
         clearInterval(refreshInterval);
       }
     };
-  }, [isWebGLReady, captureTexture, isInteracting, isMobile]);
+  }, [isWebGLReady, isInteracting, captureTexture, isMobile]);
 
   // Render when position changes
   useEffect(() => {
@@ -514,17 +558,53 @@ export default function LiquidGlassLens({
     }
   }, [x, y, size, isMobile]);
 
-  if (!isVisible) return null;
+  // Add this near the other useEffects to implement a toggle button
+  useEffect(() => {
+    if (isMobile) {
+      // Create a toggle button
+      const toggleButton = document.createElement('button');
+      toggleButton.innerText = isLensActive ? '🔍 Disable Lens' : '🔍 Enable Lens';
+      toggleButton.style.position = 'fixed';
+      toggleButton.style.bottom = '20px';
+      toggleButton.style.right = '20px';
+      toggleButton.style.padding = '10px';
+      toggleButton.style.zIndex = '100';
+      toggleButton.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+      toggleButton.style.borderRadius = '20px';
+      toggleButton.style.border = '1px solid rgba(0, 0, 0, 0.2)';
+      toggleButton.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
+      
+      toggleButton.addEventListener('click', () => {
+        setIsLensActive(!isLensActive);
+      });
+      
+      document.body.appendChild(toggleButton);
+      
+      return () => {
+        document.body.removeChild(toggleButton);
+      };
+    }
+  }, [isMobile, isLensActive]);
+
+  // Modify the visibility condition to also check if lens is active
+  if (!isVisible || (isMobile && !isLensActive)) return null;
 
   return (
     <canvas
       ref={canvasRef}
-      className={`fixed pointer-events-none z-50 ${className}`}
+      className={`fixed pointer-events-auto z-50 ${className}`}
       style={{
         width: `${size}px`,
         height: `${size}px`,
         willChange: 'transform', // Optimize for animations
+        touchAction: 'none', // Prevent browser handling of touches
       }}
     />
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if these props change
+  return (
+    prevProps.isVisible === nextProps.isVisible &&
+    prevProps.size === nextProps.size
+  );
+});
