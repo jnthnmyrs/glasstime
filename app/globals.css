@@ -172,3 +172,20 @@ body {
 .lens-container {
   transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+
+/* Add these to your existing styles */
+.glass-lens {
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  filter: contrast(1.1);
+}
+
+/* Ensure content under the lens is properly rendered */
+.glass-lens * {
+  pointer-events: none;
+}
+
+/* Optional: Add a subtle transition for smoother movement */
+.glass-lens {
+  transition: transform 0.1s ease-out;
+}

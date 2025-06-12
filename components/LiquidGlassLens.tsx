@@ -81,9 +81,9 @@ export default React.memo(function LiquidGlassLens({
   const captureTexture = useCallback(async () => {
     if (!glRef.current || !programRef.current || !canvasRef.current) return;
     
-    // Throttle texture captures (especially on mobile)
+    // Increase the minimum capture interval significantly
     const now = Date.now();
-    const minCaptureInterval = isMobile ? 2000 : 1000; // Longer interval to reduce flashing
+    const minCaptureInterval = isMobile ? 5000 : 3000; // Much longer intervals
     
     if (now - lastCaptureTimeRef.current < minCaptureInterval) {
       return;
@@ -92,15 +92,14 @@ export default React.memo(function LiquidGlassLens({
     lastCaptureTimeRef.current = now;
     
     try {
-      // Store current canvas position to restore it exactly
       const canvasEl = canvasRef.current;
       const originalVisibility = canvasEl.style.visibility;
       
-      // Instead of hiding, move offscreen to avoid flash
-      canvasEl.style.visibility = 'hidden';
+      // Move offscreen instead of hiding to avoid flash
+      canvasEl.style.transform = 'translateY(-9999px)';
       
-      // Mobile-optimized settings
-      const captureScale = isMobile ? 0.5 : 1;
+      // Optimize capture settings
+      const captureScale = isMobile ? 0.5 : 0.75; // Reduce quality for better performance
       const scrollOffset = isMobile ? 0 : 35;
       
       const pageCanvas = await html2canvas(document.body, {
@@ -112,6 +111,8 @@ export default React.memo(function LiquidGlassLens({
         x: window.scrollX,
         y: window.scrollY + scrollOffset,
         ignoreElements: (element) => element === canvasRef.current,
+        logging: false, // Disable logging
+        backgroundColor: null, // Transparent background
         onclone: (clonedDoc) => {
           const style = clonedDoc.createElement('style');
           style.textContent = `
@@ -127,12 +128,11 @@ export default React.memo(function LiquidGlassLens({
         }
       });
 
-      // Restore canvas visibility
+      // Restore canvas position
+      canvasEl.style.transform = '';
       canvasEl.style.visibility = originalVisibility;
 
       const gl = glRef.current;
-      
-      // Don't update state if component is unmounting
       if (!gl) return;
       
       setPageTexture({
@@ -140,7 +140,7 @@ export default React.memo(function LiquidGlassLens({
         height: pageCanvas.height
       });
 
-      // Reuse texture if possible
+      // Reuse texture
       let texture = textureRef.current;
       if (!texture) {
         texture = gl.createTexture();
@@ -156,8 +156,8 @@ export default React.memo(function LiquidGlassLens({
 
     } catch (error) {
       console.error('❌ Failed to capture:', error);
-      // Make sure canvas is visible even if capture fails
       if (canvasRef.current) {
+        canvasRef.current.style.transform = '';
         canvasRef.current.style.visibility = 'visible';
       }
     }
@@ -167,16 +167,15 @@ export default React.memo(function LiquidGlassLens({
   const resetInteractionTimeout = useCallback(() => {
     setIsInteracting(true);
     
-    // Clear existing timeout
     if (interactionTimeoutRef.current) {
       clearTimeout(interactionTimeoutRef.current);
     }
     
-    // Set a new timeout
+    // Increase timeout to reduce frequency of captures
     interactionTimeoutRef.current = setTimeout(() => {
       setIsInteracting(false);
       captureTexture();
-    }, 500);
+    }, 1000); // Increased from 500ms to 1000ms
   }, [captureTexture]);
 
   // Then use both in the event handlers useEffect
@@ -284,6 +283,7 @@ export default React.memo(function LiquidGlassLens({
       uniform vec2 u_pageResolution;
       uniform vec2 u_lensPosition;
       uniform vec2 u_lensSize;
+      uniform bool u_isMobile;
       varying vec2 v_texCoord;
       
       void main() {
@@ -297,35 +297,43 @@ export default React.memo(function LiquidGlassLens({
           return;
         }
         
-        vec2 lensOffset = (v_texCoord - lensCenter) * u_lensSize ;
+        // Adjust base magnification based on mobile
+        float magnification = u_isMobile ? 0.7 : 1.0; // Reduce magnification on mobile
+        vec2 lensOffset = (v_texCoord - lensCenter) * u_lensSize * magnification;
         lensOffset.y = -lensOffset.y;
         vec2 basePageCoord = u_lensPosition + lensOffset;
         
         float normalizedDist = distFromCenter / lensRadius;
         
-        // ENHANCED: Create liquid glass melting effect with more aggressive distortion
         vec2 finalPageCoord = basePageCoord;
         
-        if (normalizedDist > 0.6) {
-          // Start distortion earlier for more melting effect
+        // Adjust distortion thresholds and strengths for mobile
+        float distortionStart = u_isMobile ? 0.7 : 0.6; // Start distortion later on mobile
+        float distortionStrengthMobile = 60.0; // Reduced from 80.0 for mobile
+        float swirlStrengthMobile = 10.0; // Reduced from 15.0 for mobile
+        
+        if (normalizedDist > distortionStart) {
           float edgeZone = (normalizedDist - 0.4) / 0.9;
           vec2 direction = normalize(v_texCoord - lensCenter);
           
-          // Create liquid melting distortion - content bends toward lens edges
-          float distortionStrength = edgeZone * edgeZone * edgeZone; // Cubic for more dramatic effect
-          vec2 radialDistortion = direction * distortionStrength * 80.0; // Increased strength
+          // Adjust distortion strength based on mobile
+          float distortionStrength = edgeZone * edgeZone * edgeZone;
+          vec2 radialDistortion = direction * distortionStrength * 
+            (u_isMobile ? distortionStrengthMobile : 80.0);
           
-          // Add swirl effect for more liquid behavior
+          // Adjust swirl effect for mobile
           float angle = atan(direction.y, direction.x);
-          float swirl = sin(angle * 3.0 + normalizedDist * 6.28) * edgeZone * 15.0;
+          float swirl = sin(angle * 3.0 + normalizedDist * 6.28) * edgeZone * 
+            (u_isMobile ? swirlStrengthMobile : 15.0);
           vec2 swirlOffset = vec2(-direction.y, direction.x) * swirl;
           
           finalPageCoord = basePageCoord + radialDistortion + swirlOffset;
           
-          // Add chromatic aberration for realism
+          // Adjust chromatic aberration for mobile
           if (normalizedDist > 0.7) {
             float chromatic = (normalizedDist - 0.7) / 0.2;
-            finalPageCoord += direction * chromatic * 5.0;
+            float chromaticStrength = u_isMobile ? 3.0 : 5.0; // Reduced for mobile
+            finalPageCoord += direction * chromatic * chromaticStrength;
           }
         }
         
@@ -460,9 +468,14 @@ export default React.memo(function LiquidGlassLens({
     gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
     gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 16, 8);
 
+    // Add isMobile uniform to shader
+    gl.useProgram(program);
+    const isMobileLocation = gl.getUniformLocation(program, 'u_isMobile');
+    gl.uniform1i(isMobileLocation, isMobile ? 1 : 0);
+
     console.log('✅ WebGL initialized successfully');
     return true;
-  }, []);
+  }, [isMobile]);
 
   const render = useCallback(() => {
     if (!glRef.current || !programRef.current || !textureRef.current || !pageTexture) return;
@@ -489,6 +502,9 @@ export default React.memo(function LiquidGlassLens({
     gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
     gl.uniform1i(gl.getUniformLocation(program, 'u_texture'), 0);
 
+    const isMobileLocation = gl.getUniformLocation(program, 'u_isMobile');
+    gl.uniform1i(isMobileLocation, isMobile ? 1 : 0);
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }, [size, x, y, pageTexture, isMobile]);
 
@@ -503,19 +519,19 @@ export default React.memo(function LiquidGlassLens({
     }
   }, [isVisible, initWebGL, captureTexture]);
 
-  // Recapture texture periodically when not interacting
+  // Modify the periodic refresh interval
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout | null = null;
     
     // Only do periodic updates when not actively interacting
     if (isWebGLReady && !isInteracting) {
       refreshInterval = setInterval(() => {
-        // Only capture if enough time has passed since last capture
         const now = Date.now();
-        if (now - lastCaptureTimeRef.current > (isMobile ? 3000 : 2000)) {
+        // Much longer intervals between captures
+        if (now - lastCaptureTimeRef.current > (isMobile ? 8000 : 5000)) {
           captureTexture();
         }
-      }, isMobile ? 5000 : 3000); // Less frequent updates to reduce flashing
+      }, isMobile ? 10000 : 6000); // Much less frequent updates
     }
     
     return () => {
@@ -525,20 +541,12 @@ export default React.memo(function LiquidGlassLens({
     };
   }, [isWebGLReady, isInteracting, captureTexture, isMobile]);
 
-  // Render when position changes
+  // Remove the mobile-specific capture during interaction
   useEffect(() => {
     if (isWebGLReady && textureRef.current) {
       render();
-      
-      // For mobile: capture texture occasionally during interaction
-      if (isMobile && isInteracting) {
-        const now = Date.now();
-        if (now - lastCaptureTimeRef.current > 1000) { // 1 second
-          captureTexture();
-        }
-      }
     }
-  }, [render, isWebGLReady, x, y, isMobile, isInteracting, captureTexture]);
+  }, [render, isWebGLReady, x, y, isMobile, isInteracting]);
 
   // Handle canvas positioning
   useEffect(() => {
