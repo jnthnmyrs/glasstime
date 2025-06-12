@@ -3,7 +3,7 @@
 export default function HeresToTheCrazyOnes() {
   return (
     <div className="max-w-2xl mx-auto space-y-6 text-black select-none py-24">
-      <h1 className="text-5xl lg:text-6xl font-light leading-tight tracking-tight mb-12">
+      <h1 className="text-5xl lg:text-6xl font-normal leading-tight tracking-tight mb-12">
         Here's to the crazy ones.
       </h1>
       
