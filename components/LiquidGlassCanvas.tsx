@@ -65,7 +65,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     const getOffset = () => {
       return {
         x: 0, // No horizontal offset
-        y: isMobile ? -60 : -30 // Lens center above pointer (negative = upward)
+        y: isMobile ? -100 : -30 // Lens center above pointer (negative = upward)
       };
     };
 
