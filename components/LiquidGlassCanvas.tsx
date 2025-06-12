@@ -140,7 +140,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     currentY += 48; // pt-12 equivalent
     ctx.font = `400 ${contentSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
     
-    textContent.attribution.forEach((line, index) => {
+    textContent.attribution.forEach((line) => {
       ctx.fillText(line, centerX, currentY);
       currentY += contentSize * 1.25 + 4; // space-y-1
     });
