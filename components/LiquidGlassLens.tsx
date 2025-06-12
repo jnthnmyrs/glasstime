@@ -17,7 +17,7 @@ export default function LiquidGlassLens({
   y: propY,
   isVisible = true,
   size = 200, 
-  intensity = 1,
+  // intensity = 1,
   className = '' 
 }: LiquidGlassLensProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
