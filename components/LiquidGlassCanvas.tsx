@@ -1,22 +1,25 @@
-'use client';
+"use client";
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState } from "react";
 
 interface LiquidGlassCanvasProps {
   className?: string;
 }
 
-export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasProps) {
+export default function LiquidGlassCanvas({
+  className = "",
+}: LiquidGlassCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<WebGLRenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
   const textTextureRef = useRef<WebGLTexture | null>(null);
-  
+
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isReady, setIsReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [isMobile, setIsMobile] = useState(false);
   const [showLens, setShowLens] = useState(false);
+  const [isTouching, setIsTouching] = useState(false);
 
   // The text content from HeresToTheCrazyOnes
   const textContent = {
@@ -25,116 +28,159 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       "The misfits. The rebels. The troublemakers. The round pegs in the square holes. The ones who see things differently.",
       "They're not fond of rules. And they have no respect for the status quo. You can quote them, disagree with them, glorify or vilify them. About the only thing you can't do is ignore them.",
       "Because they change things. They push the human race forward. And while some may see them as the crazy ones, we see genius.",
-      "Because the people who are crazy enough to think they can change the world, are the ones who do."
+      "Because the people who are crazy enough to think they can change the world, are the ones who do.",
     ],
-    attribution: ["Think Different", "Apple Inc."]
+    attribution: ["Think Different", "Apple Inc."],
   };
 
   // Detect mobile and initialize
   useEffect(() => {
     const checkMobile = () => {
-      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isTouchDevice =
+        "ontouchstart" in window || navigator.maxTouchPoints > 0;
       const isMobileViewport = window.innerWidth <= 768;
       setIsMobile(isTouchDevice || isMobileViewport);
     };
-    
+
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   // Initialize canvas size
   useEffect(() => {
     const updateSize = () => {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         setCanvasSize({
           width: window.innerWidth,
-          height: window.innerHeight
+          height: window.innerHeight,
         });
       }
     };
 
     updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // MOBILE & DESKTOP EVENT HANDLING with OFFSET
+  // MOBILE & DESKTOP EVENT HANDLING - FIXED
   useEffect(() => {
     // Calculate offset - more on mobile since fingers are bigger
     const getOffset = () => {
       return {
         x: 0, // No horizontal offset
-        y: isMobile ? -100 : -30 // Lens center above pointer (negative = upward)
+        y: isMobile ? -60 : -30, // Lens center above pointer (negative = upward)
       };
     };
 
     // Mouse events for desktop
     const handleMouseMove = (e: MouseEvent) => {
       const offset = getOffset();
-      setMousePosition({ 
-        x: e.clientX + offset.x, 
-        y: e.clientY + offset.y 
+      setMousePosition({
+        x: e.clientX + offset.x,
+        y: e.clientY + offset.y,
       });
       if (!isMobile) {
         setShowLens(true);
       }
     };
 
-    // Touch events for mobile
+    // Touch events for mobile - IMPROVED
     const handleTouchStart = (e: TouchEvent) => {
       if (isMobile && e.touches.length === 1) {
         const touch = e.touches[0];
         const offset = getOffset();
-        setMousePosition({ 
-          x: touch.clientX + offset.x, 
-          y: touch.clientY + offset.y 
+        setMousePosition({
+          x: touch.clientX + offset.x,
+          y: touch.clientY + offset.y,
         });
         setShowLens(true);
-        // Don't prevent default - allow scrolling
+        setIsTouching(true); // Track that we're actively touching
+
+        // Prevent default to avoid any interference
+        e.preventDefault();
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (isMobile && e.touches.length === 1 && showLens) {
+      // FIXED: Only check if we're touching and have one finger
+      if (isMobile && e.touches.length === 1 && isTouching) {
         const touch = e.touches[0];
         const offset = getOffset();
-        setMousePosition({ 
-          x: touch.clientX + offset.x, 
-          y: touch.clientY + offset.y 
+        setMousePosition({
+          x: touch.clientX + offset.x,
+          y: touch.clientY + offset.y,
         });
-        // Don't prevent default - allow scrolling while lens is active
+
+        // Make sure lens stays visible while actively touching
+        setShowLens(true);
+
+        // Prevent default to avoid scrolling/other gestures
+        e.preventDefault();
       }
     };
 
-    const handleTouchEnd = () => {
+    const handleTouchEnd = (e: TouchEvent) => {
       if (isMobile) {
-        // Keep lens visible for a moment, then hide
-        setTimeout(() => setShowLens(false), 1000);
+        setIsTouching(false); // Stop tracking touch
+
+        // Hide lens after a short delay
+        setTimeout(() => {
+          // Only hide if we're not touching again
+          if (!isTouching) {
+            setShowLens(false);
+          }
+        }, 500); // Reduced from 1000ms
+
+        // Don't prevent default here - allow normal touch end behavior
       }
     };
 
-    // Add event listeners
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.addEventListener('touchmove', handleTouchMove, { passive: true });
-    document.addEventListener('touchend', handleTouchEnd, { passive: true });
+    // IMPORTANT: Also handle touchCancel in case touch gets interrupted
+    const handleTouchCancel = () => {
+      if (isMobile) {
+        setIsTouching(false);
+        setShowLens(false);
+      }
+    };
+
+    // Add event listeners with proper options
+    document.addEventListener("mousemove", handleMouseMove);
+
+    // Mobile touch events - capture phase to ensure we get them first
+    document.addEventListener("touchstart", handleTouchStart, {
+      passive: false, // Allow preventDefault
+      capture: true, // Capture phase
+    });
+    document.addEventListener("touchmove", handleTouchMove, {
+      passive: false, // Allow preventDefault
+      capture: true, // Capture phase
+    });
+    document.addEventListener("touchend", handleTouchEnd, {
+      passive: true, // Don't need preventDefault
+      capture: true, // Capture phase
+    });
+    document.addEventListener("touchcancel", handleTouchCancel, {
+      passive: true,
+      capture: true,
+    });
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('touchstart', handleTouchStart);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", handleTouchCancel);
     };
-  }, [isMobile, showLens]);
+  }, [isMobile, isTouching]);
 
   // Create text texture from canvas 2D rendering
   const createTextTexture = useCallback(() => {
     if (!glRef.current) return null;
 
     // Create a separate canvas for text rendering
-    const textCanvas = document.createElement('canvas');
-    const ctx = textCanvas.getContext('2d');
+    const textCanvas = document.createElement("canvas");
+    const ctx = textCanvas.getContext("2d");
     if (!ctx) return null;
 
     // Set canvas size to match main canvas
@@ -142,13 +188,13 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     textCanvas.height = canvasSize.height;
 
     // Clear canvas with white background
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
 
     // Set up text styling - LEFT ALIGNED
-    ctx.fillStyle = '#000000';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    ctx.fillStyle = "#000000";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
 
     // Calculate responsive font sizes
     const titleSize = isMobile ? 32 : 60; // Smaller on mobile
@@ -164,19 +210,19 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
 
     // Render title
     ctx.font = `400 ${titleSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
-    ctx.letterSpacing = '-0.025em';
-    
+    ctx.letterSpacing = "-0.025em";
+
     // Handle title text wrapping
-    const titleWords = textContent.title.split(' ');
-    let titleLine = '';
-    
+    const titleWords = textContent.title.split(" ");
+    let titleLine = "";
+
     for (let i = 0; i < titleWords.length; i++) {
-      const testLine = titleLine + titleWords[i] + ' ';
+      const testLine = titleLine + titleWords[i] + " ";
       const metrics = ctx.measureText(testLine);
-      
+
       if (metrics.width > maxWidth && i > 0) {
         ctx.fillText(titleLine.trim(), leftX, currentY);
-        titleLine = titleWords[i] + ' ';
+        titleLine = titleWords[i] + " ";
         currentY += titleSize * 1.25;
       } else {
         titleLine = testLine;
@@ -187,33 +233,35 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
 
     // Render content paragraphs
     ctx.font = `400 ${contentSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
-    ctx.fillStyle = '#374151';
-    ctx.letterSpacing = '0';
+    ctx.fillStyle = "#374151";
+    ctx.letterSpacing = "0";
 
     textContent.paragraphs.forEach((paragraph, index) => {
-      const words = paragraph.split(' ');
-      let line = '';
-      
+      const words = paragraph.split(" ");
+      let line = "";
+
       for (let i = 0; i < words.length; i++) {
-        const testLine = line + words[i] + ' ';
+        const testLine = line + words[i] + " ";
         const metrics = ctx.measureText(testLine);
-        
+
         if (metrics.width > maxWidth && i > 0) {
           ctx.fillText(line.trim(), leftX, currentY);
-          line = words[i] + ' ';
+          line = words[i] + " ";
           currentY += contentSize * 1.625;
         } else {
           line = testLine;
         }
       }
       ctx.fillText(line.trim(), leftX, currentY);
-      currentY += contentSize * 1.625 + (index < textContent.paragraphs.length - 1 ? 16 : 32);
+      currentY +=
+        contentSize * 1.625 +
+        (index < textContent.paragraphs.length - 1 ? 16 : 32);
     });
 
     // Render attribution
     currentY += 32;
     ctx.font = `400 ${contentSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif`;
-    
+
     textContent.attribution.forEach((line) => {
       ctx.fillText(line, leftX, currentY);
       currentY += contentSize * 1.25 + 4;
@@ -222,9 +270,16 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     // Create WebGL texture from the canvas
     const gl = glRef.current;
     const texture = gl.createTexture();
-    
+
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textCanvas);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      textCanvas
+    );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -242,10 +297,10 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     canvas.width = canvasSize.width;
     canvas.height = canvasSize.height;
 
-    const gl = canvas.getContext('webgl', {
+    const gl = canvas.getContext("webgl", {
       premultipliedAlpha: false,
       antialias: !isMobile, // Disable antialiasing on mobile for performance
-      powerPreference: isMobile ? 'low-power' : 'high-performance'
+      powerPreference: isMobile ? "high-performance" : "high-performance",
     });
     if (!gl) return false;
 
@@ -263,7 +318,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
 
     // Fragment shader with FIXED MOBILE ASPECT RATIO
     const fragmentShaderSource = `
-      precision ${isMobile ? 'mediump' : 'highp'} float;
+      precision ${isMobile ? "highp" : "highp"} float;
       uniform sampler2D u_textTexture;
       uniform vec2 u_resolution;
       uniform vec2 u_mousePosition;
@@ -324,25 +379,25 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
             // Calculate pull in aspect-corrected space
             vec2 toCenter = aspectMouse - aspectUV;
             float pullStrength = u_isMobile ? 
-              pow(edgeZone, 1.2) * 0.06 :  
-              pow(edgeZone, 1.5) * 0.08;   
+              pow(edgeZone, 1.5) * 0.5 :  
+              pow(edgeZone, 1.5) * 0.5;   
             
             vec2 aspectPull = toCenter * pullStrength;
             
             // Add effects only on desktop
-            if (!u_isMobile) {
-              // CURVED FLOW - only on desktop
-              float angle = atan(toCenter.y, toCenter.x);
-              float curvature = sin(normalizedDist * 3.14159) * edgeZone * 0.3;
-              float curvedAngle = angle + curvature;
-              vec2 curvedFlow = vec2(cos(curvedAngle), sin(curvedAngle)) * length(aspectPull);
+            // if (!u_isMobile) {
+            //   // CURVED FLOW - only on desktop
+            //   float angle = atan(toCenter.y, toCenter.x);
+            //   float curvature = sin(normalizedDist * 3.14159) * edgeZone * 0.3;
+            //   float curvedAngle = angle + curvature;
+            //   vec2 curvedFlow = vec2(cos(curvedAngle), sin(curvedAngle)) * length(aspectPull);
               
-              // SWIRLING MOTION - only on desktop
-              float swirl = sin(angle * 4.0 + normalizedDist * 6.28 + u_time * 0.8) * edgeZone * 0.02;
-              vec2 swirlOffset = vec2(-toCenter.y, toCenter.x) * swirl / length(toCenter);
+            //   // SWIRLING MOTION - only on desktop
+            //   float swirl = sin(angle * 4.0 + normalizedDist * 6.28 + u_time * 0.8) * edgeZone * 0.02;
+            //   vec2 swirlOffset = vec2(-toCenter.y, toCenter.x) * swirl / length(toCenter);
               
-              aspectPull = curvedFlow + swirlOffset;
-            }
+            //   aspectPull = curvedFlow + swirlOffset;
+            // }
             
             // Convert pull back to UV space
             vec2 uvPull = aspectPull;
@@ -357,7 +412,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
           
           // CHROMATIC ABERRATION
           if (normalizedDist > 0.75) {
-            float chromaticStrength = (normalizedDist - 0.75) / 0.25;
+            float chromaticStrength = (normalizedDist - 0.75) / 0.09;
             chromaticStrength = pow(chromaticStrength, 1.2);
             
             // Calculate direction in aspect-corrected space
@@ -382,21 +437,44 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
             
             vec4 color = vec4(red, green, blue, 1.0);
             
-            // PRISMATIC EFFECT
-            if (normalizedDist > (u_isMobile ? 0.85 : 0.85)) {
-              float prismStart = 0.85;
-              float prismRange = 0.15;
-              float prismIntensity = (normalizedDist - prismStart) / prismRange;
-              prismIntensity = pow(prismIntensity, 2.0);
-              float prismAngle = atan(flowDirection.y, flowDirection.x);
+            // SUBTLE RAINBOW RING at the very edge of the lens - MOVED HERE
+            if (normalizedDist > 0.92) { // Very edge only
+              float ringZone = (normalizedDist - 0.92) / 0.08; // 8% ring at edge
               
-              vec3 spectrum = vec3(
-                sin(prismAngle * 3.0 + u_time * 0.5 + 0.0) * 0.5 + 0.5,
-                sin(prismAngle * 3.0 + u_time * 0.7 + 2.09) * 0.5 + 0.5,
-                sin(prismAngle * 3.0 + u_time * 0.6 + 4.18) * 0.5 + 0.5
+              // Create subtle chromatic aberration for the ring
+              vec2 edgeDirection = normalize(aspectUV - aspectMouse);
+              
+              // Very subtle offsets - much smaller than main chromatic aberration
+              float ringChromatic = 0.008; // Increased from 0.003 for visibility
+              vec2 ringOffset = edgeDirection * ringZone * ringChromatic;
+              
+              // Convert to UV space
+              if (aspectRatio > 1.0) {
+                ringOffset.x /= aspectRatio;
+              } else {
+                ringOffset.y *= aspectRatio;
+              }
+              
+              // Sample RGB channels with slight offsets for rainbow ring
+              float ringRed = texture2D(u_textTexture, sampleUV + ringOffset * 1.2).r;
+              float ringGreen = texture2D(u_textTexture, sampleUV + ringOffset * 0.0).g; // Green stays centered
+              float ringBlue = texture2D(u_textTexture, sampleUV - ringOffset * 1.5).b;
+              
+              // Create the rainbow ring effect
+              vec3 ringColor = vec3(ringRed, ringGreen, ringBlue);
+              
+              // Blend with existing color based on ring intensity
+              float ringIntensity = smoothstep(0.0, 1.0, ringZone) * 0.8; // Increased intensity
+              color.rgb = mix(color.rgb, ringColor, ringIntensity);
+              
+              // Add subtle iridescent shimmer to the ring
+              float ringShimmer = sin(atan(edgeDirection.y, edgeDirection.x) * 8.0 + u_time * 3.0) * 0.2;
+              vec3 shimmerColor = vec3(
+                sin(u_time * 2.0 + 0.0) * 0.5 + 0.5,
+                sin(u_time * 2.0 + 2.09) * 0.5 + 0.5,
+                sin(u_time * 2.0 + 4.18) * 0.5 + 0.5
               );
-              
-              color.rgb = mix(color.rgb, spectrum, prismIntensity * 0.4);
+              color.rgb += shimmerColor * ringShimmer * ringIntensity * 0.3; // Increased shimmer
             }
             
             gl_FragColor = color;
@@ -405,6 +483,38 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
           
           // Sample the locally distorted content
           vec4 color = texture2D(u_textTexture, sampleUV);
+          
+          // RAINBOW RING for non-chromatic areas - ADD THIS TOO
+          if (normalizedDist > 0.92) {
+            float ringZone = (normalizedDist - 0.92) / 0.08;
+            
+            vec2 edgeDirection = normalize(aspectUV - aspectMouse);
+            float ringChromatic = 0.008;
+            vec2 ringOffset = edgeDirection * ringZone * ringChromatic;
+            
+            if (aspectRatio > 1.0) {
+              ringOffset.x /= aspectRatio;
+            } else {
+              ringOffset.y *= aspectRatio;
+            }
+            
+            float ringRed = texture2D(u_textTexture, sampleUV + ringOffset * 1.2).r;
+            float ringGreen = texture2D(u_textTexture, sampleUV + ringOffset * 0.0).g;
+            float ringBlue = texture2D(u_textTexture, sampleUV - ringOffset * 1.5).b;
+            
+            vec3 ringColor = vec3(ringRed, ringGreen, ringBlue);
+            float ringIntensity = smoothstep(0.0, 1.0, ringZone) * 0.8;
+            color.rgb = mix(color.rgb, ringColor, ringIntensity);
+            
+            float ringShimmer = sin(atan(edgeDirection.y, edgeDirection.x) * 8.0 + u_time * 3.0) * 0.2;
+            vec3 shimmerColor = vec3(
+              sin(u_time * 2.0 + 0.0) * 0.5 + 0.5,
+              sin(u_time * 2.0 + 2.09) * 0.5 + 0.5,
+              sin(u_time * 2.0 + 4.18) * 0.5 + 0.5
+            );
+            color.rgb += shimmerColor * ringShimmer * ringIntensity * 0.3;
+          }
+          
           color.rgb *= vec3(0.995, 0.998, 1.0);
           gl_FragColor = color;
           return;
@@ -419,7 +529,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     // Create and compile shaders
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-    
+
     if (!vertexShader || !fragmentShader) return false;
 
     gl.shaderSource(vertexShader, vertexShaderSource);
@@ -429,11 +539,17 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
 
     // Check compilation
     if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-      console.error('Vertex shader compilation failed:', gl.getShaderInfoLog(vertexShader));
+      console.error(
+        "Vertex shader compilation failed:",
+        gl.getShaderInfoLog(vertexShader)
+      );
       return false;
     }
     if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-      console.error('Fragment shader compilation failed:', gl.getShaderInfoLog(fragmentShader));
+      console.error(
+        "Fragment shader compilation failed:",
+        gl.getShaderInfoLog(fragmentShader)
+      );
       return false;
     }
 
@@ -446,24 +562,36 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     gl.linkProgram(program);
 
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error('Program linking failed:', gl.getProgramInfoLog(program));
+      console.error("Program linking failed:", gl.getProgramInfoLog(program));
       return false;
     }
 
     // Set up geometry (fullscreen quad)
     const vertices = new Float32Array([
-      -1, -1,  0, 1,  // bottom-left
-       1, -1,  1, 1,  // bottom-right
-      -1,  1,  0, 0,  // top-left
-       1,  1,  1, 0   // top-right
+      -1,
+      -1,
+      0,
+      1, // bottom-left
+      1,
+      -1,
+      1,
+      1, // bottom-right
+      -1,
+      1,
+      0,
+      0, // top-left
+      1,
+      1,
+      1,
+      0, // top-right
     ]);
 
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
-    const positionLocation = gl.getAttribLocation(program, 'a_position');
-    const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+    const positionLocation = gl.getAttribLocation(program, "a_position");
+    const texCoordLocation = gl.getAttribLocation(program, "a_texCoord");
 
     gl.enableVertexAttribArray(positionLocation);
     gl.enableVertexAttribArray(texCoordLocation);
@@ -481,7 +609,7 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     const gl = glRef.current;
     const program = programRef.current;
     const texture = textTextureRef.current;
-    
+
     if (!gl || !program || !texture) return;
 
     gl.viewport(0, 0, canvasSize.width, canvasSize.height);
@@ -491,15 +619,26 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
     gl.useProgram(program);
 
     // Set uniforms
-    gl.uniform2f(gl.getUniformLocation(program, 'u_resolution'), canvasSize.width, canvasSize.height);
-    gl.uniform2f(gl.getUniformLocation(program, 'u_mousePosition'), mousePosition.x, mousePosition.y);
-    gl.uniform1f(gl.getUniformLocation(program, 'u_time'), Date.now() / 1000);
-    gl.uniform1i(gl.getUniformLocation(program, 'u_isMobile'), isMobile ? 1 : 0);
+    gl.uniform2f(
+      gl.getUniformLocation(program, "u_resolution"),
+      canvasSize.width,
+      canvasSize.height
+    );
+    gl.uniform2f(
+      gl.getUniformLocation(program, "u_mousePosition"),
+      mousePosition.x,
+      mousePosition.y
+    );
+    gl.uniform1f(gl.getUniformLocation(program, "u_time"), Date.now() / 1000);
+    gl.uniform1i(
+      gl.getUniformLocation(program, "u_isMobile"),
+      isMobile ? 1 : 0
+    );
 
     // Bind texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.uniform1i(gl.getUniformLocation(program, 'u_textTexture'), 0);
+    gl.uniform1i(gl.getUniformLocation(program, "u_textTexture"), 0);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }, [canvasSize, mousePosition, isMobile]);
@@ -547,13 +686,13 @@ export default function LiquidGlassCanvas({ className = '' }: LiquidGlassCanvasP
       ref={canvasRef}
       className={`fixed inset-0 ${className}`}
       style={{
-        width: '100vw',
-        height: '100vh',
-        cursor: isMobile ? 'default' : 'none',
-        pointerEvents: 'none', // CRITICAL: Allows scrolling through the canvas
+        width: "100vw",
+        height: "100vh",
+        cursor: isMobile ? "default" : "none",
+        pointerEvents: "none", // CRITICAL: Allows scrolling through the canvas
         opacity: shouldShowLens ? 1 : 1, // Always visible, lens controlled by shader
-        touchAction: 'auto' // Allow all touch gestures
+        touchAction: "auto", // Allow all touch gestures
       }}
     />
   );
-} 
+}
