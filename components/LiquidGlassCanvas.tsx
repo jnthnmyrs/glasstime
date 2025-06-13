@@ -178,33 +178,39 @@ export default function LiquidGlassCanvas({
   const createTextTexture = useCallback(() => {
     if (!glRef.current) return null;
 
+    // GET DEVICE PIXEL RATIO for sharp text
+    const pixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
     // Create a separate canvas for text rendering
     const textCanvas = document.createElement("canvas");
     const ctx = textCanvas.getContext("2d");
     if (!ctx) return null;
 
-    // Set canvas size to match main canvas
-    textCanvas.width = canvasSize.width;
-    textCanvas.height = canvasSize.height;
+    // Set canvas size to ACTUAL device pixels for crisp text
+    textCanvas.width = canvasSize.width * pixelRatio;
+    textCanvas.height = canvasSize.height * pixelRatio;
+    
+    // Scale the context to match device pixel ratio
+    ctx.scale(pixelRatio, pixelRatio);
 
     // Clear canvas with white background
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, textCanvas.width, textCanvas.height);
+    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height); // Use logical size
 
     // Set up text styling - LEFT ALIGNED
     ctx.fillStyle = "#000000";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
 
-    // Calculate responsive font sizes
-    const titleSize = isMobile ? 32 : 60; // Smaller on mobile
-    const contentSize = isMobile ? 14 : 20; // Smaller on mobile
+    // Calculate responsive font sizes (use logical sizes, scaling handled by context)
+    const titleSize = isMobile ? 32 : 60;
+    const contentSize = isMobile ? 14 : 20;
 
-    // Position content - LEFT ALIGNED with proper padding
+    // Position content - use LOGICAL coordinates (scaling handled by context)
     const padding = isMobile ? 20 : 64;
     const leftX = padding;
-    const startY = Math.max(60, (textCanvas.height - 600) / 2); // Adjusted for mobile
-    const maxWidth = Math.min(672, textCanvas.width - padding * 2);
+    const startY = Math.max(60, (canvasSize.height - 600) / 2); // Use logical height
+    const maxWidth = Math.min(672, canvasSize.width - padding * 2); // Use logical width
 
     let currentY = startY;
 
@@ -267,7 +273,7 @@ export default function LiquidGlassCanvas({
       currentY += contentSize * 1.25 + 4;
     });
 
-    // Create WebGL texture from the canvas
+    // Create WebGL texture from the HIGH-DPI canvas
     const gl = glRef.current;
     const texture = gl.createTexture();
 
@@ -288,18 +294,25 @@ export default function LiquidGlassCanvas({
     return texture;
   }, [canvasSize, textContent, isMobile]);
 
-  // Initialize WebGL with mobile optimizations
+  // Initialize WebGL with RETINA/HIGH-DPI support
   const initWebGL = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return false;
 
-    // Set canvas size
-    canvas.width = canvasSize.width;
-    canvas.height = canvasSize.height;
+    // GET DEVICE PIXEL RATIO for sharp rendering
+    const pixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    
+    // Set INTERNAL canvas resolution to actual device pixels
+    canvas.width = canvasSize.width * pixelRatio;
+    canvas.height = canvasSize.height * pixelRatio;
+    
+    // Set CSS size to logical pixels (what user sees)
+    canvas.style.width = `${canvasSize.width}px`;
+    canvas.style.height = `${canvasSize.height}px`;
 
     const gl = canvas.getContext("webgl", {
       premultipliedAlpha: false,
-      antialias: !isMobile, // Disable antialiasing on mobile for performance
+      antialias: !isMobile, // Keep your existing setting
       powerPreference: isMobile ? "high-performance" : "high-performance",
     });
     if (!gl) return false;
@@ -350,7 +363,7 @@ export default function LiquidGlassCanvas({
         float dist = distance(aspectUV, aspectMouse);
         
         // CONSISTENT lens radius regardless of aspect ratio
-        float lensRadius = u_isMobile ? 0.2 : 0.12; // Slightly larger on mobile for easier touch
+        float lensRadius = u_isMobile ? 0.25 : 0.12; // Slightly larger on mobile for easier touch
         
         if (dist < lensRadius) {
           float normalizedDist = dist / lensRadius;
@@ -612,13 +625,17 @@ export default function LiquidGlassCanvas({
 
     if (!gl || !program || !texture) return;
 
-    gl.viewport(0, 0, canvasSize.width, canvasSize.height);
+    // GET DEVICE PIXEL RATIO for viewport
+    const pixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+
+    // Set viewport to ACTUAL device pixels
+    gl.viewport(0, 0, canvasSize.width * pixelRatio, canvasSize.height * pixelRatio);
     gl.clearColor(1, 1, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.useProgram(program);
 
-    // Set uniforms
+    // Set uniforms - use LOGICAL coordinates (shader will handle the scaling)
     gl.uniform2f(
       gl.getUniformLocation(program, "u_resolution"),
       canvasSize.width,
