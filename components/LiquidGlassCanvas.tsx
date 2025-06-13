@@ -363,7 +363,7 @@ export default function LiquidGlassCanvas({
         float dist = distance(aspectUV, aspectMouse);
         
         // CONSISTENT lens radius regardless of aspect ratio
-        float lensRadius = u_isMobile ? 0.25 : 0.12; // Slightly larger on mobile for easier touch
+        float lensRadius = u_isMobile ? 0.18 : 0.12; // Slightly larger on mobile for easier touch
         
         if (dist < lensRadius) {
           float normalizedDist = dist / lensRadius;
