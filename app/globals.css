@@ -11,8 +11,10 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow-x: hidden;
   line-height: 1.5;
-  /* cursor: none; Hide cursor everywhere */
+  cursor: none; /* Hide cursor everywhere */
 }
+
+
 
 /* MOBILE: Disable scrolling and text selection */
 @media (max-width: 768px) {
