@@ -206,11 +206,14 @@ export default function LiquidGlassCanvas({
     const titleSize = isMobile ? 32 : 60;
     const contentSize = isMobile ? 14 : 20;
 
-    // Position content - use LOGICAL coordinates (scaling handled by context)
+    // Position content - CENTER the text block horizontally
     const padding = isMobile ? 20 : 64;
-    const leftX = padding;
+    const maxWidth = Math.min(672, canvasSize.width - padding * 2); // max-w-2xl equivalent
+
+    // CENTER the text block instead of left-aligning to padding
+    const leftX = (canvasSize.width - maxWidth) / 2; // This centers the text block!
+
     const startY = Math.max(60, (canvasSize.height - 600) / 2); // Use logical height
-    const maxWidth = Math.min(672, canvasSize.width - padding * 2); // Use logical width
 
     let currentY = startY;
 
