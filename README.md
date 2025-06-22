@@ -1,8 +1,19 @@
-It is June 11th 2025. Apple just announced LiquidGlass™.
+After contemplating the new Apple Design Language, I've made for you—
 
-This is not LiquidGlass™.
+✨ GlassTime™ — a brief web experience.
 
-It is inspired by the LiquidGlass™, though.
+https://glasstime.vercel.app/
 
-Right now it's using the 2D canvas to render the text and then using WebGL to render the glass effect.
+It's less LiquidGlass and more like the entrance to a fanciful bubble world. But will humans ever grow tired of seeing chromatic aberration? 
+
+I don't think so.
+
+So go ahead. Check out GlassTime and have a good time.™
+
+It will be interesting to see how Apple handles the very serious accessibility issues in this next chapter.
+
+✌️ Thanks for reading and have a great day.
+
+Clearly,
+Jonathan WebGL
 
